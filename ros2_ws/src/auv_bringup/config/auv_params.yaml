@@ -1,0 +1,64 @@
+# Tum node parametreleri tek dosyada.
+# Havuz gununde ayarlanacaklar "AYAR:" ile isaretli.
+
+mav_bridge:
+  ros__parameters:
+    connection_url: 'udpout:127.0.0.1:14551'
+    target_system: 1
+    manual_rate_hz: 10.0
+    manual_timeout_s: 1.0
+    depth_source: 'vfr_hud'          # 'pressure2' alternatif
+    water_density_kgm3: 997.0        # AYAR: deniz suyu 1024.0
+    surface_pressure_hpa: 1013.25
+
+vertical_state:
+  ros__parameters:
+    rate_hz: 10.0
+    median_window: 5
+    sensor_timeout_s: 1.5
+    altitude_min_m: 0.3
+    altitude_max_m: 30.0
+
+lane_follow:
+  ros__parameters:
+    cruise_speed: 0.4                # AYAR: havuzda
+    kp_lateral: 0.9                  # AYAR
+    kp_angle: 0.02                   # AYAR
+    lost_timeout_s: 2.0
+    end_hint_frames: 8
+    publish_debug: true
+    hsv_lower: [0, 80, 80]           # AYAR: su altinda yeniden esikle!
+    hsv_upper: [15, 255, 255]
+    hsv_lower2: [165, 80, 80]
+    hsv_upper2: [180, 255, 255]
+
+dead_reckoning:
+  ros__parameters:
+    rate_hz: 10.0
+    speed_table_csv: ''              # bringup launch dolduruyor
+    origin_samples: 20
+    origin_min_fix_type: 3
+    origin_min_satellites: 6
+
+mission:
+  ros__parameters:
+    rate_hz: 10.0
+    missions_dir: ''                 # bringup launch dolduruyor
+    speed_table_csv: ''              # bringup launch dolduruyor
+    ws_port: 8765
+    heading_kp: 12.0                 # AYAR: havuzda
+    heading_kd: 4.0                  # AYAR
+    max_yaw_cmd: 400
+    depth_kp: 500.0                  # AYAR
+    max_z_offset: 250
+    yaw_rate_full_dps: 60.0          # AYAR: r=1000'deki gercek donus hizi olculecek
+
+video_stream:
+  ros__parameters:
+    host: '192.168.2.1'
+    port: 5601
+    width: 640
+    height: 480
+    fps: 30
+    bitrate_kbps: 2000
+    use_hw_encoder: true

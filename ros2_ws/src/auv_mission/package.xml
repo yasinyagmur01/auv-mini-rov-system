@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>auv_mission</name>
+  <version>0.1.0</version>
+  <description>Gorev durum makinesi, kontrol primitifleri ve panel WebSocket sunucusu</description>
+  <maintainer email="thelicbd@yeniaycerez.com">AUV Takimi</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>auv_msgs</depend>
+  <exec_depend>auv_dead_reckoning</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

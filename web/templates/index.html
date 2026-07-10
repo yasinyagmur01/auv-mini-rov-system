@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUV Sensör & Kamera Paneli</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; }
+  header { padding: 10px 18px; background: #161b22; border-bottom: 1px solid #30363d;
+           display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 12px; background: #21262d; }
+  .pill.ok { background: #12401f; color: #7ee787; }
+  .pill.bad { background: #4a1215; color: #ff9d9d; }
+  main { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; padding: 14px; }
+  @media (max-width: 950px) { main { grid-template-columns: 1fr; } }
+  .cams { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .cams { grid-template-columns: 1fr; } }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden; }
+  .card h2 { font-size: 13px; margin: 0; padding: 8px 12px; background: #1c2230;
+             display: flex; justify-content: space-between; align-items: center; }
+  .card h2 .st { font-size: 11px; color: #8b949e; font-weight: normal; }
+  .card img { width: 100%; display: block; background: #000; aspect-ratio: 4/3; object-fit: contain; }
+  .sensors { display: flex; flex-direction: column; gap: 14px; }
+  .big { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
+  .metric { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; }
+  .metric .label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; }
+  .metric .val { font-size: 26px; font-weight: 700; margin-top: 2px; }
+  .metric .val small { font-size: 13px; font-weight: 400; color: #8b949e; }
+  .metric.stale .val { color: #6e7681; }
+  .profile { padding: 12px; }
+  canvas { width: 100%; height: 260px; display: block; }
+  .att { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; padding: 12px; text-align: center; }
+  .att div span { display: block; }
+  .att .k { font-size: 11px; color: #8b949e; }
+  .att .v { font-size: 20px; font-weight: 700; }
+  footer { padding: 8px 18px; color: #6e7681; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AUV Sensör & Kamera Paneli</h1>
+  <span id="link" class="pill">bağlantı ?</span>
+  <span id="volt" class="pill">— V</span>
+  <span style="flex:1"></span>
+  <span class="pill">otomatik yenileniyor</span>
+</header>
+
+<main>
+  <div class="cams">
+    <div class="card">
+      <h2>Intel D435 (Jetson) <span class="st" id="st-d435">—</span></h2>
+      <img src="/video/d435" alt="D435">
+    </div>
+    <div class="card">
+      <h2>Mini ROV Kamera <span class="st" id="st-minirov">—</span></h2>
+      <img src="/video/minirov" alt="Mini ROV">
+    </div>
+  </div>
+
+  <div class="sensors">
+    <div class="card">
+      <h2>Dikey Eksen (Bar30 + Sonar)</h2>
+      <div class="big">
+        <div class="metric" id="m-depth">
+          <div class="label">Derinlik (Bar30)</div>
+          <div class="val"><span id="depth">—</span> <small>m</small></div>
+        </div>
+        <div class="metric" id="m-alt">
+          <div class="label">Dipten Yükseklik (Sonar)</div>
+          <div class="val"><span id="alt">—</span> <small>m</small></div>
+        </div>
+        <div class="metric" id="m-col" style="grid-column:1/3">
+          <div class="label">Su Sütunu (derinlik + yükseklik)</div>
+          <div class="val"><span id="col">—</span> <small>m</small></div>
+        </div>
+      </div>
+      <div class="profile">
+        <canvas id="prof" width="360" height="260"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>IMU (Attitude)</h2>
+      <div class="att">
+        <div><span class="k">Roll</span><span class="v" id="roll">—</span></div>
+        <div><span class="k">Pitch</span><span class="v" id="pitch">—</span></div>
+        <div><span class="k">Yaw</span><span class="v" id="yaw">—</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Sensörler MAVLink'ten, kameralar MJPEG akışı ile. Kaynaklar: web/config.py</footer>
+
+<script>
+function setMetric(id, el, val, unit, valid) {
+  const box = document.getElementById(id);
+  if (val === null || val === undefined) {
+    el.textContent = '—'; box.classList.add('stale'); return;
+  }
+  el.textContent = val.toFixed(2);
+  box.classList.toggle('stale', valid === false);
+}
+
+function drawProfile(depth, alt, depthValid, altValid) {
+  const c = document.getElementById('prof'), ctx = c.getContext('2d');
+  const W = c.width, H = c.height, margin = 26;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0b2740'; ctx.fillRect(0, 0, W, H);
+  const d = depth || 0, a = (altValid ? alt : 2) || 0;
+  const col = d + a, scaleMax = Math.max(3, col * 1.25);
+  const yOf = m => margin + (H - 2 * margin) * (m / scaleMax);
+  // yüzey
+  ctx.strokeStyle = '#7fd4ff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, yOf(0)); ctx.lineTo(W, yOf(0)); ctx.stroke();
+  ctx.fillStyle = '#7fd4ff'; ctx.font = '11px sans-serif';
+  ctx.fillText('yüzey 0 m', 6, yOf(0) - 5);
+  // taban
+  if (depthValid && altValid) {
+    const yb = yOf(col);
+    ctx.strokeStyle = '#c9a24b';
+    ctx.beginPath(); ctx.moveTo(0, yb); ctx.lineTo(W, yb); ctx.stroke();
+    ctx.fillStyle = '#c9a24b'; ctx.fillText('taban ' + col.toFixed(1) + ' m', 6, yb + 16);
+  }
+  // araç
+  if (depthValid) {
+    const yv = yOf(d);
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath();
+    ctx.moveTo(W/2-16, yv); ctx.lineTo(W/2+16, yv);
+    ctx.lineTo(W/2+22, yv+7); ctx.lineTo(W/2-22, yv+7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(d.toFixed(2) + ' m', W/2+28, yv+6);
+    if (altValid) {
+      ctx.strokeStyle = '#66ff99'; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(W/2, yv+8); ctx.lineTo(W/2, yOf(col)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#66ff99'; ctx.fillText(a.toFixed(2)+' m', W/2+4, (yv+yOf(col))/2);
+    }
+  } else {
+    ctx.fillStyle = '#888'; ctx.fillText('derinlik verisi yok', W/2-60, H/2);
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/sensors');
+    const d = await r.json();
+    const link = document.getElementById('link');
+    link.textContent = d.connected ? 'bağlı' : 'BAĞLANTI YOK';
+    link.className = 'pill ' + (d.connected ? 'ok' : 'bad');
+    document.getElementById('volt').textContent =
+      d.voltage != null ? d.voltage.toFixed(1) + ' V' : '— V';
+
+    setMetric('m-depth', document.getElementById('depth'), d.depth_m, 'm', d.depth_valid);
+    setMetric('m-alt', document.getElementById('alt'), d.altitude_m, 'm', d.sonar_valid);
+    setMetric('m-col', document.getElementById('col'), d.water_column_m, 'm',
+              d.depth_valid && d.sonar_valid);
+
+    document.getElementById('roll').textContent  = d.roll  != null ? d.roll + '°'  : '—';
+    document.getElementById('pitch').textContent = d.pitch != null ? d.pitch + '°' : '—';
+    document.getElementById('yaw').textContent   = d.yaw   != null ? d.yaw + '°'   : '—';
+
+    if (d.cameras) {
+      document.getElementById('st-d435').textContent = d.cameras.d435 || '—';
+      document.getElementById('st-minirov').textContent = d.cameras.minirov || '—';
+    }
+    drawProfile(d.depth_m, d.altitude_m, d.depth_valid, d.sonar_valid);
+  } catch (e) {
+    document.getElementById('link').textContent = 'sunucu yok';
+    document.getElementById('link').className = 'pill bad';
+  }
+}
+setInterval(poll, 250);
+poll();
+</script>
+</body>
+</html>

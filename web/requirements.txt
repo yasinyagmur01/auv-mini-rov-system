@@ -1,0 +1,4 @@
+Flask>=3.0
+opencv-python>=4.8
+pymavlink>=2.4.40
+numpy

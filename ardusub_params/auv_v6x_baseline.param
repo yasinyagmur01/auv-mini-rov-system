@@ -1,0 +1,51 @@
+# AUV (CUAV V6X v2, ArduSub 4.7.0 beta) taban parametreleri
+# QGC > Vehicle Setup > Parameters > Tools > Load from file ile yuklenir.
+# NOT: Bu dosya BASLANGIC noktasidir; kalibrasyonlar (pusula, ivmeolcer,
+# joystick) QGC'den ayrica yapilmali, sonra tam dump alinip bu klasore
+# auv_v6x_YYYYAAGG.param olarak kaydedilmelidir (her havuz gunu!).
+
+# --- Kimlik / cerceve ---
+SYSID_THISMAV,1
+FRAME_CONFIG,2          # Vectored_6DOF (8 motor, BlueROV2-Heavy yerlesimi)
+                        # QGC motor diyagramiyla DOGRULANDI:
+                        #   1,2 (on) + 3,4 (arka) = yatay vektorel (capraz ikon)
+                        #   5,6 (on) + 7,8 (arka) = dikey (dairesel ikon)
+                        # Yesil/mavi renkler pervane donus yonunu (CW/CCW) gosterir.
+
+# --- Ping Sonar (TELEM2 = SERIAL2) ---
+SERIAL2_PROTOCOL,9      # Lidar/Rangefinder
+SERIAL2_BAUD,115
+RNGFND1_TYPE,23         # BlueRoboticsPing (Ping firmware >= 3.28!)
+RNGFND1_ORIENT,25       # asagi bakis
+RNGFND1_MIN,0.3
+RNGFND1_MAX,30
+
+# --- GNSS (Helical FP9, GPS1 = SERIAL3) ---
+GPS_TYPE,1              # AUTO; kilitlenmezse 5 (NMEA) deneyin
+
+# --- Bar30 ---
+# Harici I2C'de MS5837 normalde otomatik algilanir (SCALED_PRESSURE2 kontrol).
+# Algilanmazsa acin:
+# BARO_PROBE_EXT,512    # MS5837 biti (firmware surumunde dogrulayin)
+# Su tipi QGC "Frame" sayfasindan da secilebilir (tatli/tuzlu su).
+
+# --- Failsafe'ler ---
+FS_PILOT_INPUT,1        # pilot girdisi kesilirse: uyar (otonom gorevde koprumuz
+                        # 10 Hz notr gonderdigi icin tetiklenmez)
+FS_PILOT_TIMEOUT,3.0
+FS_GCS_ENABLE,0         # Gorev 2'de kablo sokulecegi icin GCS failsafe KAPALI
+                        # (guvenlik: gorev betigi zaman asimlarina sahip)
+FS_PRESS_ENABLE,1       # derinlik limiti asilirsa uyar
+FS_PRESS_MAX,180000     # ~18 m (Pa cinsinden gosterge; QGC'den dogrulayin)
+FS_BATT_ENABLE,2        # dusuk bataryada yuzeye
+FS_LEAK_ENABLE,2        # sizinti sensoru takilirsa: yuzeye
+ARMING_CHECK,1
+
+# --- Pusula / EKF notlari ---
+COMPASS_AUTODEC,1
+# CompassMot (motor girisim kalibrasyonu) havuz varilinde QGC'den yapilacak.
+# EKF su altinda GPS'siz calisir; konum tutma beklemeyin (DR Jetson'da).
+
+# --- Motorlar ---
+# Motor sirasi/yonu QGC Motor Setup sayfasindan test edilir;
+# ters donenler MOT_x_DIRECTION=-1 ile duzeltilir (kablo degistirmeyin).

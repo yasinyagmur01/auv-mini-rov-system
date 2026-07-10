@@ -1,0 +1,19 @@
+# AUV yazilimini acilista baslatan systemd birimi
+# Kurulum:
+#   sudo cp auv-bringup.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now auv-bringup
+[Unit]
+Description=AUV ROS 2 yazilim yigini
+After=network-online.target mavlink-router.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jetson
+Environment=HOME=/home/jetson
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && source /home/jetson/auv/ros2_ws/install/setup.bash && ros2 launch auv_bringup bringup.launch.py project_root:=/home/jetson/auv'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

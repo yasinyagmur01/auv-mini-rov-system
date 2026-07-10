@@ -1,0 +1,6 @@
+# Gorev 1: Otonom serit (yonlendirme tahtasi) takibi.
+# Tahta sonunda veya serit kaybinda otomatik biter -> pilot QGC'den manuele
+# gecip Mini ROV gorevine baslar.
+steps:
+  - {type: set_mode, mode: ALT_HOLD}
+  - {type: lane_follow, timeout_s: 240, min_altitude_m: 0.5}
