@@ -52,7 +52,24 @@ DEPTH_TOPIC = '/mav/depth'            # std_msgs/Float32 (m)
 RANGE_TOPIC = '/mav/rangefinder'      # sensor_msgs/Range (m)
 HEADING_TOPIC = '/mav/heading_deg'    # std_msgs/Float32 (deg)
 ATTITUDE_TOPIC = '/mav/attitude'      # geometry_msgs/Vector3Stamped (rad: x=roll,y=pitch,z=yaw)
-BATTERY_TOPIC = '/mav/battery'        # sensor_msgs/BatteryState (V)
+BATTERY_TOPIC = '/mav/battery'        # sensor_msgs/BatteryState (V, A, %)
+# --- P0 guvenlik telemetrisi topic'leri (auv_mav_bridge yayinlar) ---
+ARMED_TOPIC = '/mav/armed'            # std_msgs/Bool
+MODE_TOPIC = '/mav/mode'              # std_msgs/String (ucus modu)
+STATUSTEXT_TOPIC = '/mav/statustext'  # std_msgs/String (FC prearm/failsafe/leak metni)
+LEAK_TOPIC = '/mav/leak'              # std_msgs/Bool (sizinti; True=ALARM, yok=bilinmiyor)
+LINK_OK_TOPIC = '/mav/link_ok'        # std_msgs/Bool (AUV FC heartbeat tazeligi)
+GPS_TOPIC = '/mav/gps'                # sensor_msgs/NavSatFix (lat/lon)
+GPSINFO_TOPIC = '/mav/gps_info'       # auv_msgs/GpsInfo (fix_type, satellites, hdop)
+WATERTEMP_TOPIC = '/mav/water_temp'   # std_msgs/Float32 (Bar30 su sicakligi, C)
+# ZED VO/odometri topic'i. VARSAYILAN BOŞ = kapalı (demo sentetik zed_pose kalir).
+# ARAÇTA: `ros2 topic list | grep zed` ile gercek odom topic'ini bul (nav_msgs/Odometry;
+# tipik: /zed/zed_node/odom) ve buraya yaz -> gercek VO izi /sensors.zed_pose'a akar.
+ZED_ODOM_TOPIC = ''
+# Mini ROV (BlueOS/Navigator) mavlink2rest sysid. ARAÇTA DOĞRULA: docs SYSID_THISMAV=2
+# der ama motor-test POST target_system=1 kullaniyor. GET yolunda /mavlink agacina
+# bakip aracin ilan ettigi sysid'yi teyit et.
+NAV_SYSID = 1
 
 JPEG_QUALITY = 70
 SENSOR_FRESH_S = 3.0                  # bu sureden eski veri "connected=false"
@@ -90,7 +107,25 @@ def img_to_jpeg(msg):
 def _blank_sensors():
     return {'depth_m': None, 'altitude_m': None, 'yaw': None,
             'roll': None, 'pitch': None, 'voltage': None,
-            'depth_valid': False, 'sonar_valid': False}
+            'depth_valid': False, 'sonar_valid': False,
+            # --- P0 guvenlik telemetrisi (additive) ---
+            # Veri gelene kadar None = "bilinmiyor". DIKKAT: leak varsayilani
+            # False (sizinti yok) DEGIL None olmali; yanlis "guvenli" gostergesi
+            # hic gostermemekten beterdir. UI None'i "bilinmiyor" gosterir.
+            'current_a': None, 'battery_pct': None,
+            'armed': None, 'mode': None,
+            'statustext': None, 'leak': None,
+            # --- kokpit header ek gostergeleri (additive; None = bilinmiyor) ---
+            # AUV (V6X) tarafi
+            'gps_lat': None, 'gps_lon': None, 'gps_fix': None,
+            'gps_sats': None, 'gps_hdop': None, 'water_temp_c': None,
+            'link_ok': None,   # AUV FC HEARTBEAT tazeligi (net kopma sinyali)
+            # Mini ROV (BlueOS/Navigator, mavlink2rest) — per-arac ayri gostergeler
+            'mrov_link': None, 'mrov_leak': None, 'mrov_temp_c': None,
+            'mrov_voltage': None, 'mrov_current_a': None, 'mrov_battery_pct': None,
+            'mrov_armed': None,
+            # ZED VO/SLAM izi (demo'da sentetik+DEMO etiketli; gercek topic arac-uzeri baglanir)
+            'zed_pose': None}
 
 
 def _sensor_snapshot(sensors, sensor_stamp, cam_status_fn):
@@ -112,9 +147,10 @@ def build_ros_node():
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-    from sensor_msgs.msg import Image, CompressedImage, Range, BatteryState
-    from std_msgs.msg import Float32
+    from sensor_msgs.msg import Image, CompressedImage, Range, BatteryState, NavSatFix
+    from std_msgs.msg import Float32, Bool, String
     from geometry_msgs.msg import Vector3Stamped
+    from auv_msgs.msg import GpsInfo
 
     class BridgeNode(Node):
         def __init__(self):
@@ -139,7 +175,28 @@ def build_ros_node():
             self.create_subscription(Float32, HEADING_TOPIC, self._heading_cb, sqos)
             self.create_subscription(Vector3Stamped, ATTITUDE_TOPIC, self._att_cb, sqos)
             self.create_subscription(BatteryState, BATTERY_TOPIC, self._batt_cb, sqos)
+            # --- P0 guvenlik telemetrisi abonelikleri (additive) ---
+            # Bu topic'leri auv_mav_bridge zaten yayinliyor (arm/mode/statustext);
+            # /mav/leak bridge'e P0 kapsaminda eklenir (donanim-kapili).
+            self.create_subscription(Bool, ARMED_TOPIC, self._armed_cb, sqos)
+            self.create_subscription(String, MODE_TOPIC, self._mode_cb, sqos)
+            self.create_subscription(String, STATUSTEXT_TOPIC, self._stext_cb, sqos)
+            self.create_subscription(Bool, LEAK_TOPIC, self._leak_cb, sqos)
+            # kokpit header ek gostergeleri
+            self.create_subscription(NavSatFix, GPS_TOPIC, self._gps_cb, sqos)
+            self.create_subscription(GpsInfo, GPSINFO_TOPIC, self._gpsinfo_cb, sqos)
+            self.create_subscription(Float32, WATERTEMP_TOPIC, self._wtemp_cb, sqos)
+            self.create_subscription(Bool, LINK_OK_TOPIC, self._link_cb, sqos)
+            # ZED VO/odometri (opsiyonel; ZED_ODOM_TOPIC set edilirse gercek pose izi)
+            if ZED_ODOM_TOPIC:
+                from nav_msgs.msg import Odometry
+                self.create_subscription(Odometry, ZED_ODOM_TOPIC, self._zed_cb, sqos)
+                self.get_logger().info(f'ZED odometri aboneligi: {ZED_ODOM_TOPIC}')
             self.get_logger().info('ROS2 web koprusu hazir. Topic aboneleri kuruldu.')
+            # Mini ROV telemetrisi ROS2 disi (BlueOS 192.168.2.2) -> mavlink2rest GET poll
+            self._mrov_tok = None      # son tazelik damgasi (mesaj sayaci/zamani)
+            self._mrov_stall = 0       # ayni damganin ust uste tekrar sayisi
+            threading.Thread(target=self._mrov_loop, daemon=True).start()
 
         def _img_cb(self, name):
             def cb(msg):
@@ -195,7 +252,160 @@ def build_ros_node():
         def _batt_cb(self, m):
             v = float(m.voltage)
             self.sensors['voltage'] = round(v, 2) if v > 0 else None
+            # A ve % FC yoksa NaN gelir (bridge -1 -> NaN). NaN JSON'u kirar;
+            # kontrol ">0" degil math.isnan olmali (0.0 gecerli bir okumadir).
+            c = float(m.current)
+            self.sensors['current_a'] = round(c, 1) if not math.isnan(c) else None
+            p = float(m.percentage)   # BatteryState.percentage 0..1
+            self.sensors['battery_pct'] = round(p * 100.0) if not math.isnan(p) else None
             self.sensor_stamp = time.time()
+
+        def _armed_cb(self, m):
+            self.sensors['armed'] = bool(m.data)
+            self.sensor_stamp = time.time()
+
+        def _mode_cb(self, m):
+            self.sensors['mode'] = str(m.data)
+            self.sensor_stamp = time.time()
+
+        def _stext_cb(self, m):
+            self.sensors['statustext'] = str(m.data)
+            self.sensor_stamp = time.time()
+
+        def _leak_cb(self, m):
+            self.sensors['leak'] = bool(m.data)
+            self.sensor_stamp = time.time()
+
+        def _gps_cb(self, m):
+            self.sensors['gps_lat'] = round(float(m.latitude), 7)
+            self.sensors['gps_lon'] = round(float(m.longitude), 7)
+            self.sensor_stamp = time.time()
+
+        def _gpsinfo_cb(self, m):
+            self.sensors['gps_fix'] = int(m.fix_type)
+            self.sensors['gps_sats'] = int(m.satellites)
+            h = float(m.hdop)
+            self.sensors['gps_hdop'] = round(h, 2) if not math.isnan(h) else None
+            self.sensor_stamp = time.time()
+
+        def _wtemp_cb(self, m):
+            self.sensors['water_temp_c'] = round(float(m.data), 1)
+            self.sensor_stamp = time.time()
+
+        def _link_cb(self, m):
+            self.sensors['link_ok'] = bool(m.data)
+            self.sensor_stamp = time.time()
+
+        def _zed_cb(self, m):
+            # ZED odometri -> ustten-gorunum VO izi (x=east, y=north, yaw derece)
+            p = m.pose.pose.position
+            q = m.pose.pose.orientation
+            yaw = math.degrees(math.atan2(2 * (q.w * q.z + q.x * q.y),
+                                          1 - 2 * (q.y * q.y + q.z * q.z))) % 360.0
+            self.sensors['zed_pose'] = {'x': round(p.x, 2), 'y': round(p.y, 2),
+                                        'yaw': round(yaw, 1), 'demo': False}
+            self.sensor_stamp = time.time()
+
+        # ---- Mini ROV (BlueOS/Navigator) telemetrisi: mavlink2rest GET ----
+        # DIKKAT: mavlink2rest JSON alan sekli surume bagli degisir. Alan cikarimlari
+        # bridge_node.py formulleriyle ayni ama ARAC-UZERI DOGRULANMALI (base_mode
+        # int/dict, text list/str, sysid). En guvenilir sinyal mrov_link (erisilebilirlik).
+        def _mrov_read(self, mtype):
+            # Tam yaniti dondurur ({message, status}); tazelik icin status gerekir.
+            import json as _json
+            import urllib.request as _u
+            url = f'{NAV_M2R_URL}/vehicles/{NAV_SYSID}/components/1/messages/{mtype}'
+            try:
+                with _u.urlopen(url, timeout=2) as r:
+                    return _json.loads(r.read())
+            except Exception:
+                return None
+
+        @staticmethod
+        def _mrov_fresh_token(data):
+            # mavlink2rest 'status' sarmali: mesaj her alindiginda ilerleyen sayac/zaman.
+            # Sekil surume bagli -> counter, yoksa time.last_update dene.
+            st = (data or {}).get('status') or {}
+            if not isinstance(st, dict):
+                return None
+            if st.get('counter') is not None:
+                return st.get('counter')
+            t = st.get('time') or {}
+            return t.get('last_update') if isinstance(t, dict) else None
+
+        def _mrov_reset(self):
+            # Link kopuk/bayat -> telemetri "bilinmiyor" (None). Leak MANDALI korunur
+            # (bir kez sizinti gorulduyse fail-safe True kalir).
+            for k in ('mrov_voltage', 'mrov_current_a', 'mrov_battery_pct',
+                      'mrov_temp_c', 'mrov_armed'):
+                self.sensors[k] = None
+
+        def _mrov_loop(self):
+            while True:
+                ssd = self._mrov_read('SYS_STATUS')
+                htd = self._mrov_read('HEARTBEAT')
+                spd = self._mrov_read('SCALED_PRESSURE2')
+                std = self._mrov_read('STATUSTEXT')
+                reachable = any(x is not None for x in (ssd, htd, spd, std))
+                # tazelik: HEARTBEAT/SYS_STATUS token'i ilerliyor mu? (FC dondu ama Pi
+                # HTTP'de -> eski onbellekli mesaj -> token sabit -> bayat=kopuk say)
+                tok = self._mrov_fresh_token(htd)
+                if tok is None:
+                    tok = self._mrov_fresh_token(ssd)
+                if tok is not None:
+                    if tok == self._mrov_tok:
+                        self._mrov_stall += 1
+                    else:
+                        self._mrov_stall = 0
+                    self._mrov_tok = tok
+                    fresh = reachable and self._mrov_stall < 3   # ~3 sn ilerlemezse bayat
+                else:
+                    # status damgasi yok -> yalniz erisilebilirlik (ARAÇTA DOGRULA)
+                    fresh = reachable
+                self.sensors['mrov_link'] = bool(fresh)
+                if not fresh:
+                    self._mrov_reset()
+                    time.sleep(1.0)
+                    continue
+                ss = (ssd or {}).get('message', ssd)
+                ht = (htd or {}).get('message', htd)
+                sp = (spd or {}).get('message', spd)
+                st = (std or {}).get('message', std)
+                s = self.sensors
+                try:
+                    if ss:
+                        v = ss.get('voltage_battery')
+                        s['mrov_voltage'] = round(v / 1000.0, 2) if v not in (None, 0, 65535) else None
+                        c = ss.get('current_battery')
+                        s['mrov_current_a'] = round(c / 100.0, 1) if c not in (None, -1) else None
+                        p = ss.get('battery_remaining')
+                        s['mrov_battery_pct'] = int(p) if p not in (None, -1) else None
+                except Exception:
+                    pass
+                try:
+                    if ht is not None:
+                        bm = ht.get('base_mode', 0)
+                        bits = bm.get('bits', 0) if isinstance(bm, dict) else int(bm or 0)
+                        s['mrov_armed'] = bool(bits & 128)   # MAV_MODE_FLAG_SAFETY_ARMED
+                except Exception:
+                    pass
+                try:
+                    if sp:
+                        t = sp.get('temperature')
+                        s['mrov_temp_c'] = round(t / 100.0, 1) if t not in (None, 0) else None
+                except Exception:
+                    pass
+                try:
+                    if st:
+                        txt = st.get('text', '')
+                        if isinstance(txt, list):
+                            txt = ''.join(chr(x) for x in txt if isinstance(x, int) and x).strip()
+                        low = str(txt).lower()
+                        if 'leak' in low or 'flood' in low:
+                            s['mrov_leak'] = True   # mandalli: bir kez True -> True kalir
+                except Exception:
+                    pass
+                time.sleep(1.0)
 
         def get_jpeg(self, name):
             with self.locks.get(name, threading.Lock()):
@@ -246,13 +456,38 @@ class DemoSource:
                     self.jpegs[name] = self._frame(name, t)
             depth = round(0.6 + 0.25 * math.sin(t / 3), 2)
             alt = round(2.2 + 0.3 * math.cos(t / 4), 2)
+            # Batarya sentetik desarj: 16.0V -> ~14.4V dususu, akim dalgalanir
+            volt = round(16.0 - 0.02 * (t % 80), 2)
             self.sensors.update(
                 depth_m=depth, depth_valid=True,
                 altitude_m=alt, sonar_valid=True,
                 roll=round(4 * math.sin(t / 5), 1),
                 pitch=round(3 * math.cos(t / 6), 1),
                 yaw=round((t * 6) % 360, 1),
-                voltage=15.8)
+                voltage=volt, link_ok=True,
+                current_a=round(7.5 + 3 * abs(math.sin(t / 4)), 1),
+                battery_pct=max(0, round(100 - (t % 80) * 1.2)),
+                armed=False, mode='MANUAL',
+                # sentetik GPS (yuzey origin etrafinda kucuk drift) + su sicakligi
+                gps_lat=round(40.7891 + 0.00008 * math.sin(t / 20), 7),
+                gps_lon=round(29.4501 + 0.00008 * math.cos(t / 20), 7),
+                gps_fix=3, gps_sats=int(10 + 2 * abs(math.sin(t / 9))),
+                gps_hdop=round(0.8 + 0.3 * abs(math.sin(t / 7)), 2),
+                water_temp_c=round(18.0 + 0.6 * math.sin(t / 30), 1),
+                # Mini ROV (sentetik; gercekte mavlink2rest'ten gelir)
+                mrov_link=True, mrov_leak=None,
+                mrov_temp_c=round(19.0 + 0.4 * math.sin(t / 25), 1),
+                mrov_voltage=round(15.6 - 0.01 * (t % 60), 2),
+                mrov_current_a=round(3.0 + 1.5 * abs(math.sin(t / 5)), 1),
+                mrov_battery_pct=max(0, round(100 - (t % 60) * 1.0)),
+                mrov_armed=False,
+                # ZED VO izi (SENTETIK — DEMO): ustten-gorunum daire cizer
+                zed_pose={'x': round(2.2 * math.sin(t / 12), 2),
+                          'y': round(2.2 * math.cos(t / 15), 2),
+                          'yaw': round((t * 8) % 360, 1), 'demo': True})
+            # leak ve statustext: demo'da GERCEK sensor yok -> None (bilinmiyor).
+            # Kasitli olarak "sizinti yok" gibi sahte guvenli deger URETMIYORUZ;
+            # panel bunlari "bilinmiyor" gosterir (bkz. reviewer karari).
             self.sensor_stamp = time.time()
             time.sleep(1 / 15)
 
@@ -386,14 +621,20 @@ setInterval(poll,300);poll();
 </script></body></html>"""
 
 
-@app.route('/')
-def index():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard.html')
+def _serve_cockpit():
+    # Tek-sayfa kokpit kabugu; /, /ops, /control, /test ayni dosyayi doner
+    # (client-side mod; endpoint yollari korunur).
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cockpit.html')
     try:
         with open(p, encoding='utf-8') as f:
             return f.read()
     except FileNotFoundError:
         return render_template_string(PAGE)   # yedek (eski gomulu panel)
+
+
+@app.route('/')
+def index():
+    return _serve_cockpit()
 
 
 @app.route('/video/<name>')
@@ -408,6 +649,20 @@ def stream_color():
     return Response(mjpeg('zed'), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
+@app.route('/panel.css')
+def panel_css():
+    # Ortak tasarim sistemi (tum sayfalar paylasir). Sadece sunum; sozlesme degil.
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'panel.css')
+    try:
+        with open(p, encoding='utf-8') as f:
+            r = Response(f.read(), mimetype='text/css')
+            # Operator eski/onbellekli CSS almasin (deploy sonrasi tazelik + dev iterasyonu)
+            r.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return r
+    except FileNotFoundError:
+        return 'panel.css yok', 404
+
+
 @app.route('/sensors')
 def sensors():
     return jsonify(node.snapshot())
@@ -415,14 +670,8 @@ def sensors():
 
 @app.route('/control')
 def control_page():
-    # Otonom kontrol + waypoint + motor paneli (ayni klasordeki control.html).
-    # WS adresini kendi host'undan turetir -> ws://<jetson>:8765
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'control.html')
-    try:
-        with open(p, encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        return 'control.html yok (~/webpanel/control.html olmali)', 404
+    # Kokpit "kontrol" modu (client-side); ayni kabugu doner.
+    return _serve_cockpit()
 
 
 # Mini ROV (Navigator/BlueOS) motor testi: tarayici -> bu kopru -> mavlink2rest (.2:6040)
@@ -461,15 +710,59 @@ def minirov_motor():
         return jsonify({'ok': False, 'error': str(e)}), 502
 
 
+def _nav_set_servo(channel, pwm):
+    # Mini ROV cift-yon dogrudan cikis: DO_SET_SERVO ile bir SERVO kanalina PWM.
+    # AUV'deki direct_output'un mavlink2rest karsiligi.
+    import json as _json
+    import urllib.request as _u
+    body = {"header": {"system_id": 255, "component_id": 240, "sequence": 0},
+            "message": {"type": "COMMAND_LONG",
+                        "param1": float(channel), "param2": float(pwm),
+                        "param3": 0.0, "param4": 0.0, "param5": 0.0, "param6": 0.0, "param7": 0.0,
+                        "command": {"type": "MAV_CMD_DO_SET_SERVO"},
+                        "target_system": 1, "target_component": 1, "confirmation": 0}}
+    r = _u.Request(NAV_M2R_URL, data=_json.dumps(body).encode(),
+                   headers={'Content-Type': 'application/json'}, method='POST')
+    _u.urlopen(r, timeout=4).read()
+
+
+@app.route('/minirov/direct', methods=['POST'])
+def minirov_direct():
+    # 4 motor icin cift-yon dogrudan cikis (PWM 1100-1900). pwms=1500,1500,1500,1500
+    # ARAÇTA DOĞRULA: DO_SET_SERVO'nun mikseri ezmesi icin SERVO1-4_FUNCTION gecici
+    # 'Disabled/RCPassThru' yapilmasi gerekebilir (AUV bridge'de oldugu gibi). Kanal
+    # eslemesi (1-4) araca gore ayarlanmali. Bu relay sadece DO_SET_SERVO gonderir.
+    try:
+        raw = request.args.get('pwms', '')
+        pwms = [max(1100, min(1900, int(float(v)))) for v in raw.split(',') if v.strip()][:4]
+        if len(pwms) < 4:
+            return jsonify({'ok': False, 'error': '4 PWM gerekir (1100-1900)'}), 400
+        for ch, p in enumerate(pwms, start=1):
+            _nav_set_servo(ch, p)
+        return jsonify({'ok': True, 'pwms': pwms})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
+
+@app.route('/minirov/direct/stop', methods=['POST'])
+def minirov_direct_stop():
+    try:
+        for ch in range(1, 5):
+            _nav_set_servo(ch, 1500)   # notr
+        return jsonify({'ok': True, 'msg': 'Mini ROV dogrudan cikis notr (1500)'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
+
+@app.route('/ops')
+def ops_page():
+    return _serve_cockpit()
+
+
 @app.route('/test')
 def test_page():
-    # Adanmis motor test sayfasi (AUV + Mini ROV) - ana arayuzden erisilir.
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'motortest.html')
-    try:
-        with open(p, encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        return 'motortest.html yok (~/webpanel/motortest.html olmali)', 404
+    # Kokpit "test" modu (client-side); ayni kabugu doner.
+    return _serve_cockpit()
 
 
 @app.route('/minirov')

@@ -98,6 +98,7 @@ class MavBridge(Node):
         self.p0_hpa = float(self.get_parameter('surface_pressure_hpa').value)
         self.auto_zero = bool(self.get_parameter('auto_zero_surface').value)
         self._p0_captured = None   # auto-zero: ilk Bar30 okumasi
+        self._leak_latched = False  # P0 sizinti mandali (bir kez True -> True kalir)
 
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
@@ -111,8 +112,16 @@ class MavBridge(Node):
         self.pub_armed = self.create_publisher(Bool, '/mav/armed', 10)
         self.pub_mode = self.create_publisher(String, '/mav/mode', 10)
         self.pub_stext = self.create_publisher(String, '/mav/statustext', 10)
+        # P0 guvenlik: sizinti. YALNIZ True yayinlanir (mandalli); "kuru/OK" pozitif
+        # sinyali FC'de guvenilir olmadigindan uretilmez -> abone tarafinda veri
+        # gelmeyince "bilinmiyor" gosterilir (bkz. reviewer karari: varsayilan None).
+        self.pub_leak = self.create_publisher(Bool, '/mav/leak', 10)
         # 8 motor PWM (us) - motor yerlesim/itki gorsellestirmesi icin
         self.pub_servo = self.create_publisher(UInt16MultiArray, '/mav/servo_out', qos)
+        # Su/kart sicakligi (Bar30, SCALED_PRESSURE2.temperature) - kokpit header gostergesi
+        self.pub_water_temp = self.create_publisher(Float32, '/mav/water_temp', qos)
+        # AUV FC link durumu: HEARTBEAT tazeligi (dolayli 'connected' yerine net kopma sinyali)
+        self.pub_link = self.create_publisher(Bool, '/mav/link_ok', 10)
 
         self.create_subscription(ManualControl, '/mav/manual_control', self.on_manual, 10)
         self.create_subscription(Bool, '/mav/cmd/arm', self.on_arm, 10)
@@ -130,6 +139,7 @@ class MavBridge(Node):
         # ArduSub motor test sira no 0-TABANLI: seq k -> SERVO cikis (k+1).
         # UI "Motor N" (1..8) -> seq (N-1) -> fiziksel SERVO cikis N. (canli dogrulandi)
         self._armed = False
+        self._last_hb = 0.0            # son HEARTBEAT zamani (link watchdog)
         self._mt_active = False
         self._mt_started = False       # FC arm onayi beklendi mi (arm yarisi bug'i icin)
         self._mt_seq = 0
@@ -157,6 +167,7 @@ class MavBridge(Node):
         self.create_timer(1.0, self.tx_heartbeat)
         self.create_timer(0.05, self._mt_tick)   # 20Hz motor test tekrari (watchdog beslemesi)
         self.create_timer(0.2, self._do_tick)    # 5Hz dogrudan cikis DO_SET_SERVO tekrari
+        self.create_timer(0.5, self._link_tick)  # AUV FC link watchdog (HEARTBEAT tazeligi)
         # Cokme-guvenligi: onceki oturum dogrudan modda cakildiysa fonksiyonlari geri yukle
         if os.path.exists(self._do_marker):
             self.get_logger().warn('Onceki oturum dogrudan cikis modunda kalmis; 3s sonra SERVO fonksiyonlari geri yuklenecek')
@@ -437,9 +448,14 @@ class MavBridge(Node):
     def _stamp(self):
         return self.get_clock().now().to_msg()
 
+    def _link_tick(self):
+        # AUV FC linki: son HEARTBEAT 3 sn'den taze mi? (net kopma tespiti)
+        self.pub_link.publish(Bool(data=bool(self._last_hb and (time.time() - self._last_hb) < 3.0)))
+
     def h_heartbeat(self, m):
         if m.get_srcComponent() != 1:  # yalniz otopilot
             return
+        self._last_hb = time.time()    # link watchdog beslemesi
         armed = bool(m.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
         self._armed = armed
         self.pub_armed.publish(Bool(data=armed))
@@ -466,6 +482,12 @@ class MavBridge(Node):
             self.pub_depth.publish(Float32(data=max(0.0, -m.alt)))
 
     def h_pressure2(self, m):
+        # Sicakligi depth_source'tan BAGIMSIZ yayinla (SCALED_PRESSURE2.temperature,
+        # santi-C). Bar30 varsa gelir; kokpit header sicaklik gostergesini besler.
+        try:
+            self.pub_water_temp.publish(Float32(data=float(m.temperature) / 100.0))
+        except Exception:
+            pass
         if self.depth_source != 'pressure2':
             return
         # press_abs hPa cinsinden; derinlik = dP / (rho*g)
@@ -520,11 +542,26 @@ class MavBridge(Node):
         b.percentage = m.battery_remaining / 100.0 if m.battery_remaining != -1 else float('nan')
         b.present = True
         self.pub_batt.publish(b)
+        # P0 sizinti: mandallandiysa periyodik True yayinla (gec baglanan / yeniden
+        # baslatilan panel yeniden senkronlansin). Latch node yeniden baslayana kadar
+        # temizlenmez (sizinti kritik; fail-safe tarafinda kal).
+        if self._leak_latched:
+            self.pub_leak.publish(Bool(data=True))
 
     def h_statustext(self, m):
         text = m.text if isinstance(m.text, str) else m.text.decode(errors='ignore')
         self.pub_stext.publish(String(data=text))
         self.get_logger().info(f'FC: {text}')
+        # P0 SIZINTI TESPITI: ArduSub sizinti/su-basma olayini STATUSTEXT ile bildirir
+        # (tipik "Leak Detected"). KABUL TESTI (araçta): leak sensoru islatilinca bu
+        # dal tetiklenip /mav/leak True olmali VE panelde ALARM gorulmeli. Kesin metni
+        # kendi ArduSub 4.7.0 beta surumunuzde dogrulayin (gerekirse listeye ekleyin).
+        low = text.lower()
+        if 'leak' in low or 'flood' in low:
+            if not self._leak_latched:
+                self.get_logger().error(f'SIZINTI ALARMI (STATUSTEXT): {text}')
+            self._leak_latched = True
+            self.pub_leak.publish(Bool(data=True))
 
     def h_servo(self, m):
         # ArduSub MAIN OUT 1-8 PWM (us). Vectored-6DOF: 1-4 yatay, 5-8 dikey.

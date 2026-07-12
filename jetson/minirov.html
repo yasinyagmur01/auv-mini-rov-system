@@ -4,8 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MiniROV-Web WebRTC</title>
+<link rel="stylesheet" href="/panel.css">
 <style>
-  /* Tam-viewport koyu tema; video tum alani kaplar, object-fit: contain */
+  /* Tam-viewport koyu tema; video tum alani kaplar, object-fit: contain.
+     Not: bu sayfa canli kamera izleyicisidir; panel.css yalniz HUD renk
+     token'lari icin baglanir, video/HUD yerlesimi burada kendine yeter. */
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   #video {
     position: fixed; inset: 0;
@@ -20,30 +23,42 @@
     z-index: 10;
     font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     color: #d6e9f5;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 7px 10px;
-    border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(8, 13, 20, 0.6);
+    padding: 8px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
     user-select: none;
     pointer-events: none;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(6px);
     max-width: 70vw;
   }
   #hud .row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
   #hud .row + .row { margin-top: 3px; }
   #dot {
     width: 9px; height: 9px; border-radius: 50%;
-    background: #999; flex: 0 0 auto;
+    background: #5b6b7d; flex: 0 0 auto;
     box-shadow: 0 0 6px currentColor;
-    color: #999;
+    color: #5b6b7d;
   }
-  #dot.connecting { background: #e0b93a; color: #e0b93a; animation: pulse 1s infinite; }
-  #dot.playing    { background: #35c759; color: #35c759; }
-  #dot.error      { background: #ff453a; color: #ff453a; }
+  #dot.connecting { background: #f5a524; color: #f5a524; animation: pulse 1s infinite; }
+  #dot.playing    { background: #34d399; color: #34d399; }
+  #dot.error      { background: #f0426e; color: #f0426e; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
   #status { font-weight: 600; }
-  #meta { color: #8fa9bd; }
+  #meta { color: #8397ab; }
   #fps b { color: #fff; }
+  /* Sag ust: panele donus bagi (iframe icinde degil, tam ekranda gorunur) */
+  #back {
+    position: fixed; top: 10px; right: 12px; z-index: 10;
+    font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #d6e9f5; text-decoration: none;
+    background: rgba(8, 13, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(6px);
+    padding: 8px 12px; border-radius: 9px;
+    transition: background .15s;
+  }
+  #back:hover { background: rgba(34, 211, 238, 0.2); color: #fff; }
 </style>
 </head>
 <body>
@@ -55,6 +70,10 @@
     <div class="row" id="meta"></div>
     <div class="row" id="fps">FPS: <b>--</b></div>
   </div>
+
+  <!-- Operasyona donus (yalniz tam-ekran sayfada; iframe icinde gizlenir) -->
+  <a id="back" href="/">‹ Operasyon</a>
+  <script>if (window.top !== window.self) document.getElementById('back').style.display = 'none';</script>
 
 <script>
 "use strict";
@@ -356,6 +375,7 @@ function teardownPeer() {
  * ========================================================================*/
 let rvfcHandle = null, fpsInterval = null;
 let frameCount = 0, lastDecoded = null, lastStatsTs = null;
+let lastLatencyMs = null;   // kokpit overlay icin (getStats)
 
 function startFpsMeter() {
   stopFpsMeter();
@@ -408,7 +428,35 @@ async function pollStatsFps() {
 function updateFps(fps) {
   const w = videoEl.videoWidth, h = videoEl.videoHeight;
   fpsEl.textContent = (isFinite(fps) ? fps : "--") + (w && h ? "  ·  " + w + "x" + h : "");
+  // Kokpit kabugu iframe olarak gomuyorsa istatistikleri parent'a bildir
+  // (WebRTC protokolune DOKUNMAZ; yalniz salt-okunur olcum gonderir).
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "minirov-stats",
+        fps: (isFinite(fps) ? fps : null), w: w || null, h: h || null,
+        latency: lastLatencyMs }, "*");
+    }
+  } catch (e) {}
 }
+
+/* ---- Gecikme olcer (getStats; overlay icin) -----------------------------*/
+async function pollLatency() {
+  if (!pc) return;
+  try {
+    const stats = await pc.getStats();
+    let rtt = null, jbDelay = null, jbEmitted = null;
+    stats.forEach((r) => {
+      if (r.type === "candidate-pair" && typeof r.currentRoundTripTime === "number") rtt = r.currentRoundTripTime;
+      if (r.type === "inbound-rtp" && r.kind === "video") {
+        if (typeof r.jitterBufferDelay === "number") jbDelay = r.jitterBufferDelay;
+        if (typeof r.jitterBufferEmittedCount === "number") jbEmitted = r.jitterBufferEmittedCount;
+      }
+    });
+    if (jbDelay != null && jbEmitted) lastLatencyMs = Math.round((jbDelay / jbEmitted) * 1000);
+    else if (rtt != null) lastLatencyMs = Math.round(rtt * 1000);
+  } catch (e) {}
+}
+setInterval(pollLatency, 1000);
 
 /* ---- Baslat -------------------------------------------------------------*/
 connect();
