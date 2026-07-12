@@ -1,10 +1,26 @@
 """Web arayuzu yapilandirmasi - kurulumuna gore duzenle."""
 import os
 
+# ---------------- Sensor kaynagi ----------------
+# 'mavlink': V6X'ten dogrudan MAVLink oku (bench/gecis - asagidaki MAVLINK_URL).
+# 'bridge' : Jetson ROS2 koprusunun /sensors JSON'ini oku (tam ROS2 gecisi).
+#            V6X Jetson'a tasinip mav_bridge + ros2_web_bridge kosunca bunu sec.
+SENSOR_SOURCE = os.environ.get('SENSOR_SOURCE', 'mavlink')   # 'mavlink' | 'bridge'
+# Kopru /sensors uc noktasi (ros2_web_bridge.py). Jetson saha DHCP ile .135;
+# statik .3 uygulaninca guncelle. Kopru portu degisirse (fallback 8080) buna yaz.
+BRIDGE_SENSORS_URL = os.environ.get('BRIDGE_SENSORS_URL',
+                                    'http://192.168.2.135:8000/sensors')
+
+# ---------------- Kontrol (otonom + waypoint) ----------------
+# Jetson auv_mission node WebSocket sunucusu. /control sayfasi tarayicidan
+# DOGRUDAN buraya baglanir (arm/mod/gorev/goto komutlari + telemetri).
+MISSION_WS_URL = os.environ.get('MISSION_WS_URL', 'ws://192.168.2.135:8765')
+
 # ---------------- MAVLink (Bar30 + Ping sonar + IMU) ----------------
 # Bench: V6X dogrudan USB -> COM portu (QGC ile AYNI ANDA kullanilamaz, seri tek
 #        programa acilir). Windows'ta 'COM7' gibi; Linux'ta '/dev/ttyACM0'.
 # Aglı sistem: mavlink-router varsa 'udpin:0.0.0.0:14552' kullan.
+# (SENSOR_SOURCE='bridge' iken kullanilmaz.)
 MAVLINK_URL = os.environ.get('MAVLINK_URL', 'COM7')
 MAVLINK_BAUD = 115200
 

@@ -5,48 +5,61 @@ rosbridge/web_video_server apt gerektiriyor ama Jetson'in interneti yok.
 Bu kopru mevcut paketlerle ayni isi yapar: ROS2 topic'lerine abone olur,
 goruntuleri MJPEG, sayisal verileri JSON olarak servis eder.
 
-Veri akisi: ROS2 node'lari (d435, zed, ileride mav_bridge) -> topic'ler ->
+Veri akisi: ROS2 node'lari (d435, zed, mav_bridge) -> topic'ler ->
 bu kopru (abone) -> web. Yani her sey ROS2'den gecer.
 
 Portlar/uc noktalar (varsayilan :8000):
   /                       panel sayfasi
   /video/<ad>            MJPEG (ad: d435, zed, ...)
   /stream/color          d435 rengi (rsweb UYUMLU - PC paneli bozulmaz)
-  /sensors               JSON (derinlik/sonar/pruva + kamera durumu)
+  /sensors               JSON (derinlik/sonar/pruva/roll/pitch/batarya + kamera durumu)
+
+/sensors sozlesmesi, web/app.py MavReader.snapshot() ve web/templates/index.html
+ile birebir ayni (drop-in): connected, depth_m, altitude_m, water_column_m,
+roll, pitch, yaw, voltage, depth_valid, sonar_valid, cameras.
 
 Calistirma (Jetson, ROS2 sourcelu):
   source /opt/ros/humble/setup.bash
   python3 ros2_web_bridge.py --port 8000
+
+Donanimsiz onizleme (ROS2/Jetson gerekmez - Windows'ta da calisir):
+  python3 ros2_web_bridge.py --demo
 """
 import argparse
 import io
+import math
+import os
 import threading
 import time
 
 import numpy as np
 from PIL import Image as PILImage
-from flask import Flask, Response, jsonify, render_template_string
+from PIL import ImageDraw
+from flask import Flask, Response, jsonify, render_template_string, request
 
-import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-from sensor_msgs.msg import Image, Range
-from std_msgs.msg import Float32
-
-# Abone olunacak goruntu topic'leri: ekranda gosterilecek ad -> ROS2 topic
-IMAGE_TOPICS = {
-    'd435': '/camera/color/image_raw',
-    'zed':  '/zed/zed_node/rgb/image_rect_color',
+# Ham sensor_msgs/Image aboneleri (ad -> topic). D435 kaldirildi; su an bos.
+IMAGE_TOPICS = {}
+# Sikistirilmis (sensor_msgs/CompressedImage, JPEG) aboneleri.
+# ZED 2i Docker konteynerinde: ham 720p kare (~2.7MB) FastDDS UDP ile
+# konteyner->host'a gecmiyor (SHM sinirı); compressed (~30KB JPEG) gecer.
+# Ayrica JPEG oldugu icin yeniden kodlama yok (dogrudan servis).
+COMPRESSED_TOPICS = {
+    'zed': '/zed/zed_node/rgb/color/rect/image/compressed',
 }
+CAM_NAMES = list(IMAGE_TOPICS) + list(COMPRESSED_TOPICS)
 # Sensor topic'leri (V6X Jetson'a tasininca mav_bridge yayinlar - Faz 2)
-DEPTH_TOPIC = '/mav/depth'          # std_msgs/Float32 (m)
-RANGE_TOPIC = '/mav/rangefinder'    # sensor_msgs/Range (m)
-HEADING_TOPIC = '/mav/heading_deg'  # std_msgs/Float32 (deg)
+DEPTH_TOPIC = '/mav/depth'            # std_msgs/Float32 (m)
+RANGE_TOPIC = '/mav/rangefinder'      # sensor_msgs/Range (m)
+HEADING_TOPIC = '/mav/heading_deg'    # std_msgs/Float32 (deg)
+ATTITUDE_TOPIC = '/mav/attitude'      # geometry_msgs/Vector3Stamped (rad: x=roll,y=pitch,z=yaw)
+BATTERY_TOPIC = '/mav/battery'        # sensor_msgs/BatteryState (V)
 
 JPEG_QUALITY = 70
+SENSOR_FRESH_S = 3.0                  # bu sureden eski veri "connected=false"
 
 
 def img_to_jpeg(msg):
+    """sensor_msgs/Image -> JPEG bytes (ROS import'u gerekmez, duck-typed)."""
     h, w, enc = msg.height, msg.width, msg.encoding
     raw = bytes(msg.data)
     try:
@@ -74,69 +87,184 @@ def img_to_jpeg(msg):
     return out.getvalue()
 
 
-class BridgeNode(Node):
+def _blank_sensors():
+    return {'depth_m': None, 'altitude_m': None, 'yaw': None,
+            'roll': None, 'pitch': None, 'voltage': None,
+            'depth_valid': False, 'sonar_valid': False}
+
+
+def _sensor_snapshot(sensors, sensor_stamp, cam_status_fn):
+    """Ortak /sensors sekli (gercek node ve demo ayni fonksiyonu kullanir)."""
+    s = dict(sensors)
+    if s['depth_valid'] and s['sonar_valid'] \
+            and s['depth_m'] is not None and s['altitude_m'] is not None:
+        s['water_column_m'] = round(s['depth_m'] + s['altitude_m'], 2)
+    else:
+        s['water_column_m'] = None
+    s['connected'] = bool(sensor_stamp and (time.time() - sensor_stamp < SENSOR_FRESH_S))
+    s['cameras'] = {name: cam_status_fn(name) for name in CAM_NAMES}
+    return s
+
+
+# ---------------- Gercek ROS2 node (rclpy TEMBEL import - demo icin gerekmez) ---
+def build_ros_node():
+    """rclpy'yi burada import eder; --demo yolunda hic cagrilmaz."""
+    import rclpy
+    from rclpy.node import Node
+    from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+    from sensor_msgs.msg import Image, CompressedImage, Range, BatteryState
+    from std_msgs.msg import Float32
+    from geometry_msgs.msg import Vector3Stamped
+
+    class BridgeNode(Node):
+        def __init__(self):
+            super().__init__('ros2_web_bridge')
+            self.jpegs = {name: None for name in CAM_NAMES}
+            self.stamps = {name: 0.0 for name in CAM_NAMES}
+            self.locks = {name: threading.Lock() for name in CAM_NAMES}
+            self.sensors = _blank_sensors()
+            self.sensor_stamp = 0.0
+
+            # goruntu QoS: best-effort (hem reliable hem best-effort publisher'la uyumlu)
+            img_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
+                                 history=HistoryPolicy.KEEP_LAST)
+            for name, topic in IMAGE_TOPICS.items():
+                self.create_subscription(Image, topic, self._img_cb(name), img_qos)
+            for name, topic in COMPRESSED_TOPICS.items():
+                self.create_subscription(CompressedImage, topic, self._cimg_cb(name), img_qos)
+
+            sqos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+            self.create_subscription(Float32, DEPTH_TOPIC, self._depth_cb, sqos)
+            self.create_subscription(Range, RANGE_TOPIC, self._range_cb, sqos)
+            self.create_subscription(Float32, HEADING_TOPIC, self._heading_cb, sqos)
+            self.create_subscription(Vector3Stamped, ATTITUDE_TOPIC, self._att_cb, sqos)
+            self.create_subscription(BatteryState, BATTERY_TOPIC, self._batt_cb, sqos)
+            self.get_logger().info('ROS2 web koprusu hazir. Topic aboneleri kuruldu.')
+
+        def _img_cb(self, name):
+            def cb(msg):
+                jpg = img_to_jpeg(msg)
+                if jpg:
+                    with self.locks[name]:
+                        self.jpegs[name] = jpg
+                        self.stamps[name] = time.time()
+            return cb
+
+        def _cimg_cb(self, name):
+            # CompressedImage: format genelde 'jpeg' -> veri zaten JPEG, dogrudan servis.
+            # (PNG gelirse PIL ile JPEG'e cevir.)
+            def cb(msg):
+                data = bytes(msg.data)
+                fmt = (msg.format or '').lower()
+                jpg = None
+                if 'jpeg' in fmt or 'jpg' in fmt:
+                    jpg = data
+                else:
+                    try:
+                        im = PILImage.open(io.BytesIO(data)).convert('RGB')
+                        out = io.BytesIO(); im.save(out, 'JPEG', quality=JPEG_QUALITY)
+                        jpg = out.getvalue()
+                    except Exception:
+                        jpg = None
+                if jpg:
+                    with self.locks[name]:
+                        self.jpegs[name] = jpg
+                        self.stamps[name] = time.time()
+            return cb
+
+        def _depth_cb(self, m):
+            self.sensors['depth_m'] = round(float(m.data), 2)
+            self.sensors['depth_valid'] = True
+            self.sensor_stamp = time.time()
+
+        def _range_cb(self, m):
+            self.sensors['altitude_m'] = round(float(m.range), 2)
+            self.sensors['sonar_valid'] = 0.3 <= m.range <= 30.0
+            self.sensor_stamp = time.time()
+
+        def _heading_cb(self, m):
+            self.sensors['yaw'] = round(float(m.data), 1)
+            self.sensor_stamp = time.time()
+
+        def _att_cb(self, m):
+            # Vector3Stamped: x=roll, y=pitch, z=yaw (radyan). yaw'i heading otoriter tutar.
+            self.sensors['roll'] = round(math.degrees(m.vector.x), 1)
+            self.sensors['pitch'] = round(math.degrees(m.vector.y), 1)
+            self.sensor_stamp = time.time()
+
+        def _batt_cb(self, m):
+            v = float(m.voltage)
+            self.sensors['voltage'] = round(v, 2) if v > 0 else None
+            self.sensor_stamp = time.time()
+
+        def get_jpeg(self, name):
+            with self.locks.get(name, threading.Lock()):
+                return self.jpegs.get(name)
+
+        def cam_status(self, name):
+            fresh = (time.time() - self.stamps.get(name, 0)) < 2.0
+            return 'canli (ROS2)' if (self.jpegs.get(name) and fresh) else 'topic yok'
+
+        def snapshot(self):
+            return _sensor_snapshot(self.sensors, self.sensor_stamp, self.cam_status)
+
+    rclpy.init()
+    node = BridgeNode()
+    threading.Thread(target=lambda: rclpy.spin(node), daemon=True).start()
+    return node
+
+
+# ---------------- Demo kaynagi (rclpy YOK - yerel dogrulama) --------------------
+class DemoSource:
+    """Sentetik sensor + kamera; HTTP/panel katmanini donanimsiz dogrulamak icin.
+    web/app.py._run_demo ve panel/demo.py ile ayni desen."""
+
     def __init__(self):
-        super().__init__('ros2_web_bridge')
-        self.jpegs = {name: None for name in IMAGE_TOPICS}
-        self.stamps = {name: 0.0 for name in IMAGE_TOPICS}
-        self.locks = {name: threading.Lock() for name in IMAGE_TOPICS}
-        self.sensors = {'depth_m': None, 'altitude_m': None, 'yaw': None,
-                        'depth_valid': False, 'sonar_valid': False}
+        self.jpegs = {name: None for name in CAM_NAMES}
+        self._lock = threading.Lock()
+        self.sensors = _blank_sensors()
         self.sensor_stamp = 0.0
+        self._t0 = time.time()
+        threading.Thread(target=self._run, daemon=True).start()
 
-        # goruntu QoS: best-effort (hem reliable hem best-effort publisher'la uyumlu)
-        img_qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT,
-                             history=HistoryPolicy.KEEP_LAST)
-        for name, topic in IMAGE_TOPICS.items():
-            self.create_subscription(Image, topic, self._img_cb(name), img_qos)
+    def _frame(self, name, t):
+        im = PILImage.new('RGB', (640, 480), (30, 45, 60))
+        d = ImageDraw.Draw(im)
+        x = int(320 + 220 * math.sin(t * 0.7))
+        d.line([(x, 40), (640 - x, 440)], fill=(210, 40, 40), width=22)
+        d.text((18, 18), f'DEMO {name}', fill=(255, 255, 255))
+        d.text((18, 452), time.strftime('%H:%M:%S'), fill=(200, 200, 200))
+        out = io.BytesIO()
+        im.save(out, 'JPEG', quality=JPEG_QUALITY)
+        return out.getvalue()
 
-        sqos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.create_subscription(Float32, DEPTH_TOPIC, self._depth_cb, sqos)
-        self.create_subscription(Range, RANGE_TOPIC, self._range_cb, sqos)
-        self.create_subscription(Float32, HEADING_TOPIC, self._heading_cb, sqos)
-        self.get_logger().info('ROS2 web koprusu hazir. Topic aboneleri kuruldu.')
-
-    def _img_cb(self, name):
-        def cb(msg):
-            jpg = img_to_jpeg(msg)
-            if jpg:
-                with self.locks[name]:
-                    self.jpegs[name] = jpg
-                    self.stamps[name] = time.time()
-        return cb
-
-    def _depth_cb(self, m):
-        self.sensors['depth_m'] = round(float(m.data), 2)
-        self.sensors['depth_valid'] = True
-        self.sensor_stamp = time.time()
-
-    def _range_cb(self, m):
-        self.sensors['altitude_m'] = round(float(m.range), 2)
-        self.sensors['sonar_valid'] = 0.3 <= m.range <= 30.0
-        self.sensor_stamp = time.time()
-
-    def _heading_cb(self, m):
-        self.sensors['yaw'] = round(float(m.data), 1)
-        self.sensor_stamp = time.time()
+    def _run(self):
+        while True:
+            t = time.time() - self._t0
+            with self._lock:
+                for name in CAM_NAMES:
+                    self.jpegs[name] = self._frame(name, t)
+            depth = round(0.6 + 0.25 * math.sin(t / 3), 2)
+            alt = round(2.2 + 0.3 * math.cos(t / 4), 2)
+            self.sensors.update(
+                depth_m=depth, depth_valid=True,
+                altitude_m=alt, sonar_valid=True,
+                roll=round(4 * math.sin(t / 5), 1),
+                pitch=round(3 * math.cos(t / 6), 1),
+                yaw=round((t * 6) % 360, 1),
+                voltage=15.8)
+            self.sensor_stamp = time.time()
+            time.sleep(1 / 15)
 
     def get_jpeg(self, name):
-        with self.locks.get(name, threading.Lock()):
+        with self._lock:
             return self.jpegs.get(name)
 
     def cam_status(self, name):
-        fresh = (time.time() - self.stamps.get(name, 0)) < 2.0
-        return 'canli (ROS2)' if (self.jpegs.get(name) and fresh) else 'topic yok'
+        return 'demo'
 
     def snapshot(self):
-        s = dict(self.sensors)
-        if self.sensors['depth_valid'] and self.sensors['sonar_valid'] \
-                and self.sensors['depth_m'] is not None \
-                and self.sensors['altitude_m'] is not None:
-            s['water_column_m'] = round(self.sensors['depth_m'] + self.sensors['altitude_m'], 2)
-        else:
-            s['water_column_m'] = None
-        s['cameras'] = {name: self.cam_status(name) for name in IMAGE_TOPICS}
-        return s
+        return _sensor_snapshot(self.sensors, self.sensor_stamp, self.cam_status)
 
 
 # ---------------- Flask ----------------
@@ -180,11 +308,14 @@ main{display:grid;grid-template-columns:2fr 1fr;gap:14px;padding:14px}@media(max
 .att .k{font-size:11px;color:#8b949e;display:block}.att .v{font-size:20px;font-weight:700}
 </style></head><body>
 <header><h1>AUV Panel — ROS2</h1><span id=link class=pill>?</span>
-<span style=flex:1></span><span class=pill>veriler ROS2 topic'lerinden</span></header>
+<span id=volt class=pill>— V</span>
+<span style=flex:1></span>
+<a href="/test" class=pill style="text-decoration:none;color:#ffd23f;font-weight:700">⚙ Motor Test</a>
+<a href="/control" class=pill style="text-decoration:none;color:#7fd4ff">Kontrol Paneli →</a></header>
 <main>
 <div class=cams>
-<div class=card><h2>D435 (ROS2) <span class=st id=st-d435>—</span></h2><img src="/video/d435"></div>
-<div class=card><h2>ZED 2i (ROS2) <span class=st id=st-zed>—</span></h2><img src="/video/zed"></div>
+<div class=card><h2>AUV — ZED 2i (ROS2) <span class=st id=st-zed>—</span></h2><img src="/video/zed"></div>
+<div class=card><h2><a href="/minirov" target=_blank style="color:#7fd4ff;text-decoration:none">Mini ROV — WebRTC 30fps ⤢ tam ekran</a></h2><iframe src="/minirov" style="width:100%;aspect-ratio:16/9;border:0;display:block;background:#000"></iframe></div>
 </div>
 <div>
 <div class=card><h2>Dikey Eksen (Bar30+Sonar, ROS2)</h2>
@@ -192,46 +323,89 @@ main{display:grid;grid-template-columns:2fr 1fr;gap:14px;padding:14px}@media(max
 <div class=metric id=m-d><div class=label>Derinlik</div><div class=val><span id=depth>—</span> <small>m</small></div></div>
 <div class=metric id=m-a><div class=label>Dipten Yükseklik</div><div class=val><span id=alt>—</span> <small>m</small></div></div>
 <div class=metric id=m-c style="grid-column:1/3"><div class=label>Su Sütunu</div><div class=val><span id=col>—</span> <small>m</small></div></div>
-</div></div>
-<div class=card style=margin-top:14px><h2>IMU</h2><div class=att>
+</div>
+<div style="padding:0 12px 12px"><canvas id=prof width=360 height=250 style="width:100%;height:auto;background:#0b2740;border-radius:6px"></canvas></div></div>
+<div class=card style=margin-top:14px><h2>IMU (Attitude)</h2><div class=att>
+<div><span class=k>Roll</span><span class=v id=roll>—</span></div>
+<div><span class=k>Pitch</span><span class=v id=pitch>—</span></div>
 <div><span class=k>Yaw</span><span class=v id=yaw>—</span></div>
-<div><span class=k>Derinlik geçerli</span><span class=v id=dv>—</span></div>
-<div><span class=k>Sonar geçerli</span><span class=v id=sv>—</span></div>
 </div></div>
 </div></main>
 <script>
 function setm(id,el,v,valid){const b=document.getElementById(id);if(v==null){el.textContent='—';b.classList.add('stale');return}el.textContent=(+v).toFixed(2);b.classList.toggle('stale',valid===false)}
 async function poll(){try{const d=await(await fetch('/sensors')).json();
-const anycam=Object.values(d.cameras||{}).some(s=>s.includes('canli'));
+const anycam=Object.values(d.cameras||{}).some(s=>s.includes('canli')||s==='demo');
 const lk=document.getElementById('link');
-const on=anycam||d.depth_m!=null;lk.textContent=on?'ROS2 bağlı':'veri bekleniyor';lk.className='pill '+(on?'ok':'bad');
+const on=d.connected||anycam||d.depth_m!=null;lk.textContent=on?'ROS2 bağlı':'veri bekleniyor';lk.className='pill '+(on?'ok':'bad');
+document.getElementById('volt').textContent=d.voltage!=null?(+d.voltage).toFixed(1)+' V':'— V';
 setm('m-d',document.getElementById('depth'),d.depth_m,d.depth_valid);
 setm('m-a',document.getElementById('alt'),d.altitude_m,d.sonar_valid);
 setm('m-c',document.getElementById('col'),d.water_column_m,d.depth_valid&&d.sonar_valid);
+document.getElementById('roll').textContent=d.roll!=null?d.roll+'°':'—';
+document.getElementById('pitch').textContent=d.pitch!=null?d.pitch+'°':'—';
 document.getElementById('yaw').textContent=d.yaw!=null?d.yaw+'°':'—';
-document.getElementById('dv').textContent=d.depth_valid?'✓':'—';
-document.getElementById('sv').textContent=d.sonar_valid?'✓':'—';
-if(d.cameras){document.getElementById('st-d435').textContent=d.cameras.d435||'—';document.getElementById('st-zed').textContent=d.cameras.zed||'—'}
+if(d.cameras){var z=document.getElementById('st-zed');if(z)z.textContent=d.cameras.zed||'—'}
+drawProfile(d.depth_m,d.altitude_m,d.depth_valid,d.sonar_valid);
 }catch(e){document.getElementById('link').textContent='sunucu yok';document.getElementById('link').className='pill bad'}}
+
+// Dikey profil: AUV HER ZAMAN ORTADA sabit. Yuzey yukarida (derinlik kadar),
+// taban asagida (dipten yukseklik kadar). Arac yukari/asagi kaymaz; su yuzeyi
+// ve taban ona gore konumlanir.
+function drawProfile(depth,alt,dv,av){
+  const c=document.getElementById('prof'),x=c.getContext('2d'),W=c.width,H=c.height,m=30;
+  x.clearRect(0,0,W,H);x.fillStyle='#0b2740';x.fillRect(0,0,W,H);
+  const yV=H/2;                                  // AUV ekranin tam ortasi
+  const d=(dv?(depth||0):0), a=(av?(alt||0):0);
+  const span=Math.max(d,a,1.0);                  // buyuk mesafe kenara yakin olur
+  const scale=(H/2-m)/span;                      // metre -> piksel
+  const yS=yV-d*scale, yF=yV+a*scale;
+  x.font='11px sans-serif';x.textAlign='left';
+  // hava/su ayrimi: yuzey ustu hafif farkli ton
+  if(dv){x.fillStyle='rgba(10,25,45,0.6)';x.fillRect(0,0,W,Math.max(0,yS));}
+  // yuzey cizgisi
+  if(dv){x.strokeStyle='#7fd4ff';x.lineWidth=2;x.beginPath();x.moveTo(0,yS);x.lineTo(W,yS);x.stroke();
+    x.fillStyle='#7fd4ff';x.fillText('YÜZEY',8,yS-6);
+    x.fillText('↑ yüzeye '+d.toFixed(2)+' m',W-118,yS-6);}
+  else{x.fillStyle='#ff9d9d';x.fillText('Bar30 / derinlik verisi yok',8,18);}
+  // taban cizgisi (taramali)
+  if(av){x.strokeStyle='#c9a24b';x.lineWidth=2;x.beginPath();x.moveTo(0,yF);x.lineTo(W,yF);x.stroke();
+    for(let px=0;px<W;px+=14){x.beginPath();x.moveTo(px,yF);x.lineTo(px+7,yF+7);x.stroke();}
+    x.fillStyle='#c9a24b';x.fillText('TABAN',8,yF+18);
+    x.fillText('↓ tabana '+a.toFixed(2)+' m',W-118,yF+18);}
+  else{x.fillStyle='#8b949e';x.fillText('sonar yok',8,H-8);}
+  // AUV govdesi (ortada, sabit)
+  x.fillStyle='#ffd23f';x.beginPath();
+  x.moveTo(W/2-20,yV-4);x.lineTo(W/2+20,yV-4);x.lineTo(W/2+26,yV+6);x.lineTo(W/2-26,yV+6);
+  x.closePath();x.fill();
+  x.fillStyle='#0d1117';x.font='bold 12px sans-serif';x.textAlign='center';
+  x.fillText('AUV',W/2,yV+4);x.textAlign='left';
+}
+
+// Mini ROV artik WebRTC iframe (/minirov) ile 30fps -> thumbnail polling yok.
 setInterval(poll,300);poll();
 </script></body></html>"""
 
 
 @app.route('/')
 def index():
-    return render_template_string(PAGE)
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard.html')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return render_template_string(PAGE)   # yedek (eski gomulu panel)
 
 
 @app.route('/video/<name>')
 def video(name):
-    if name not in IMAGE_TOPICS:
+    if name not in CAM_NAMES:
         return 'yok', 404
     return Response(mjpeg(name), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@app.route('/stream/color')      # rsweb UYUMLU - mevcut PC paneli bunu kullaniyor
+@app.route('/stream/color')      # geriye donuk uyumluluk: artik birincil kamera ZED
 def stream_color():
-    return Response(mjpeg('d435'), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(mjpeg('zed'), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/sensors')
@@ -239,16 +413,91 @@ def sensors():
     return jsonify(node.snapshot())
 
 
+@app.route('/control')
+def control_page():
+    # Otonom kontrol + waypoint + motor paneli (ayni klasordeki control.html).
+    # WS adresini kendi host'undan turetir -> ws://<jetson>:8765
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'control.html')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return 'control.html yok (~/webpanel/control.html olmali)', 404
+
+
+# Mini ROV (Navigator/BlueOS) motor testi: tarayici -> bu kopru -> mavlink2rest (.2:6040)
+# -> Navigator ArduSub (sysid 1, comp 1). Sunucu-tarafi relay (CORS yok).
+NAV_M2R_URL = 'http://192.168.2.2:6040/mavlink'
+
+
+def _nav_motor_test(motor, throttle_pct, duration_s):
+    import json as _json
+    import urllib.request as _u
+    body = {"header": {"system_id": 255, "component_id": 240, "sequence": 0},
+            "message": {"type": "COMMAND_LONG",
+                        "param1": float(motor), "param2": 0.0,      # 0 = THROTTLE_PERCENT
+                        "param3": float(throttle_pct), "param4": float(duration_s),
+                        "param5": 0.0, "param6": 0.0, "param7": 0.0,
+                        "command": {"type": "MAV_CMD_DO_MOTOR_TEST"},
+                        "target_system": 1, "target_component": 1, "confirmation": 0}}
+    r = _u.Request(NAV_M2R_URL, data=_json.dumps(body).encode(),
+                   headers={'Content-Type': 'application/json'}, method='POST')
+    _u.urlopen(r, timeout=4).read()
+
+
+@app.route('/minirov/motor', methods=['POST'])
+def minirov_motor():
+    motor = int(request.args.get('motor', 0))
+    throttle = int(request.args.get('throttle', 10))
+    duration = int(request.args.get('duration', 3))
+    try:
+        if motor == 0:                       # 0 = HEPSINI DURDUR (cikis 1..6)
+            for m in range(1, 7):
+                _nav_motor_test(m, 0, 0)
+            return jsonify({'ok': True, 'msg': 'Mini ROV motorlari durduruldu'})
+        _nav_motor_test(motor, throttle, duration)
+        return jsonify({'ok': True, 'motor': motor, 'throttle': throttle, 'duration': duration})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+
+
+@app.route('/test')
+def test_page():
+    # Adanmis motor test sayfasi (AUV + Mini ROV) - ana arayuzden erisilir.
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'motortest.html')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return 'motortest.html yok (~/webpanel/motortest.html olmali)', 404
+
+
+@app.route('/minirov')
+def minirov_page():
+    # Mini ROV 30fps WebRTC izleyici (BlueOS camera-manager :6021 signalling).
+    # Tarayici dogrudan .2'ye baglanir; Jetson yalnizca sayfayi sunar.
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'minirov.html')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return 'minirov.html yok (~/webpanel/minirov.html olmali)', 404
+
+
 def main():
     global node
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8000)
+    ap.add_argument('--demo', action='store_true',
+                    help='rclpy/donanim olmadan sentetik veri (yerel dogrulama)')
     args = ap.parse_args()
 
-    rclpy.init()
-    node = BridgeNode()
-    threading.Thread(target=lambda: rclpy.spin(node), daemon=True).start()
-    print(f'ROS2 web koprusu: http://0.0.0.0:{args.port}')
+    if args.demo:
+        node = DemoSource()
+        print(f'ROS2 web koprusu [DEMO]: http://0.0.0.0:{args.port}')
+    else:
+        node = build_ros_node()
+        print(f'ROS2 web koprusu: http://0.0.0.0:{args.port}')
     app.run(host='0.0.0.0', port=args.port, threaded=True)
 
 

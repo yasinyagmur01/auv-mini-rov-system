@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUV Kontrol İstasyonu</title>
+<style>
+  :root{
+    --bg:#080d14; --surface:#0f1721; --surface2:#152030; --border:#22303f;
+    --text:#e8eef4; --muted:#8397ab; --faint:#5b6b7d;
+    --accent:#2dd4bf; --accent2:#38bdf8; --ok:#34d399; --warn:#fbbf24; --danger:#f87171;
+    --radius:14px; --shadow:0 6px 22px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 700px at 70% -10%,#0d1a24 0%,var(--bg) 55%);
+       color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums}
+  /* ---- app bar ---- */
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;
+    padding:12px 20px;background:rgba(9,14,20,.82);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
+  .brand .logo{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#04121a;font-weight:900}
+  nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);
+    border-radius:11px;padding:4px}
+  nav a{padding:7px 14px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px;
+    font-weight:600;transition:.15s}
+  nav a:hover{color:var(--text);background:var(--surface2)}
+  nav a.active{color:#04121a;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .spacer{flex:1}
+  .stats{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);font-size:12px;font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);box-shadow:0 0 8px currentColor;color:var(--faint)}
+  .dot.ok{background:var(--ok);color:var(--ok)} .dot.bad{background:var(--danger);color:var(--danger)}
+  .dot.warn{background:var(--warn);color:var(--warn)}
+  /* ---- layout ---- */
+  main{display:grid;grid-template-columns:1fr 372px;gap:18px;padding:18px;max-width:1600px;margin:0 auto}
+  @media(max-width:1050px){main{grid-template-columns:1fr}}
+  .cams{display:grid;grid-template-columns:1fr;gap:18px}
+  .card{background:linear-gradient(180deg,var(--surface),#0c1420);border:1px solid var(--border);
+    border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+  .card>.hd{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;
+    border-bottom:1px solid var(--border);font-size:13px;font-weight:700;letter-spacing:.2px}
+  .card>.hd .r{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--muted);font-size:11px}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11px;
+    background:var(--surface2);color:var(--muted)}
+  .badge.live{background:rgba(52,211,153,.14);color:var(--ok)}
+  .cam{position:relative;background:#000;aspect-ratio:16/9;display:block;width:100%}
+  .cam img,.cam iframe{width:100%;height:100%;object-fit:contain;display:block;border:0;background:#000}
+  .cam .tag{position:absolute;top:10px;left:12px;z-index:2;display:flex;gap:8px;align-items:center;
+    padding:5px 11px;border-radius:999px;background:rgba(6,10,15,.6);backdrop-filter:blur(6px);
+    font-size:12px;font-weight:700}
+  .cam .tag a{color:var(--accent2);text-decoration:none}
+  .cam .fs{position:absolute;top:10px;right:12px;z-index:2;padding:5px 10px;border-radius:8px;
+    background:rgba(6,10,15,.6);color:var(--accent2);text-decoration:none;font-size:12px;backdrop-filter:blur(6px)}
+  /* ---- rail ---- */
+  aside{display:flex;flex-direction:column;gap:18px}
+  .bd{padding:15px}
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tile{background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:11px 13px}
+  .tile .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .tile .v{font-size:25px;font-weight:800;margin-top:3px;line-height:1}
+  .tile .v small{font-size:12px;font-weight:500;color:var(--muted)}
+  .tile.wide{grid-column:1/3}
+  .tile.stale .v{color:var(--faint)}
+  .profwrap{margin-top:13px}
+  .gaugewrap{display:flex;align-items:center;gap:16px}
+  .att{display:flex;flex-direction:column;gap:10px;flex:1}
+  .att .rowk{display:flex;justify-content:space-between;font-size:13px}
+  .att .rowk b{font-variant-numeric:tabular-nums}
+  .att .bar{height:6px;background:var(--surface2);border-radius:4px;margin-top:4px;position:relative;overflow:hidden}
+  .att .bar i{position:absolute;top:0;bottom:0;left:50%;width:2px;background:var(--accent)}
+  footer{color:var(--faint);font-size:11px;text-align:center;padding:6px 0 20px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">▲</span> AUV Kontrol İstasyonu</div>
+  <nav>
+    <a class="active" href="/">Panel</a>
+    <a href="/control">Kontrol</a>
+    <a href="/test">Motor Test</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="stats">
+    <span class="chip"><span class="dot" id="d-ros"></span>ROS2</span>
+    <span class="chip"><span class="dot" id="d-fc"></span>V6X</span>
+    <span class="chip" id="c-batt">— V</span>
+  </div>
+</header>
+
+<main>
+  <section class="cams">
+    <div class="card">
+      <div class="cam">
+        <span class="tag"><span class="dot ok" id="d-zed"></span>AUV · ZED 2i</span>
+        <img src="/video/zed" alt="ZED">
+      </div>
+    </div>
+    <div class="card">
+      <div class="cam">
+        <span class="tag"><span class="dot ok"></span>Mini ROV · WebRTC</span>
+        <a class="fs" href="/minirov" target="_blank">⤢ tam ekran</a>
+        <iframe src="/minirov" title="Mini ROV"></iframe>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <div class="hd">Dikey Eksen <span class="r">Bar30 + Sonar</span></div>
+      <div class="bd">
+        <div class="tiles">
+          <div class="tile" id="t-depth"><div class="k">Derinlik</div><div class="v"><span id="depth">—</span> <small>m</small></div></div>
+          <div class="tile" id="t-alt"><div class="k">Dipten Yükseklik</div><div class="v"><span id="alt">—</span> <small>m</small></div></div>
+          <div class="tile wide" id="t-col"><div class="k">Su Sütunu</div><div class="v"><span id="col">—</span> <small>m</small></div></div>
+        </div>
+        <div class="profwrap"><canvas id="prof" width="340" height="240" style="width:100%;height:auto;display:block;border-radius:10px"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd">Yönelim <span class="r">IMU · Pusula</span></div>
+      <div class="bd">
+        <div class="gaugewrap">
+          <canvas id="compass" width="128" height="128" style="width:118px;height:118px"></canvas>
+          <div class="att">
+            <div><div class="rowk"><span>Pruva</span><b><span id="yaw">—</span>°</b></div></div>
+            <div><div class="rowk"><span>Roll</span><b><span id="roll">—</span>°</b></div><div class="bar"><i id="b-roll"></i></div></div>
+            <div><div class="rowk"><span>Pitch</span><b><span id="pitch">—</span>°</b></div><div class="bar"><i id="b-pitch"></i></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd">Durum</div>
+      <div class="bd" style="display:flex;flex-direction:column;gap:9px;font-size:13px">
+        <div style="display:flex;justify-content:space-between"><span class="k" style="color:var(--muted)">ROS2 köprüsü</span><span id="s-ros">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="k" style="color:var(--muted)">Uçuş kontrol (V6X)</span><span id="s-fc">—</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="k" style="color:var(--muted)">Kameralar</span><span id="s-cam">—</span></div>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer>AUV Kontrol İstasyonu · veriler ROS2 topic'lerinden · otomatik yenilenir</footer>
+
+<script>
+function $(id){return document.getElementById(id)}
+function setTile(tileId,elId,v,valid){
+  const t=$(tileId),e=$(elId); if(!e)return;
+  if(v==null){e.textContent='—';t.classList.add('stale');return}
+  e.textContent=(+v).toFixed(2); t.classList.toggle('stale',valid===false);
+}
+function setDot(id,cls){const d=$(id);if(d)d.className='dot '+cls}
+
+// ---- dikey profil (AUV ortada; yuzey ustte, taban altta) ----
+function drawProfile(depth,alt,dv,av){
+  const c=$('prof'),x=c.getContext('2d'),W=c.width,H=c.height,m=30,yV=H/2;
+  x.clearRect(0,0,W,H);
+  const g=x.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0b2233');g.addColorStop(1,'#071722');
+  x.fillStyle=g;x.fillRect(0,0,W,H);
+  const d=(dv?(depth||0):0),a=(av?(alt||0):0),span=Math.max(d,a,1),sc=(H/2-m)/span;
+  const yS=yV-d*sc,yF=yV+a*sc;
+  x.font='11px system-ui';x.textAlign='left';
+  if(dv){ x.fillStyle='rgba(45,212,191,.06)';x.fillRect(0,yS,W,H-yS);
+    x.strokeStyle='#38bdf8';x.lineWidth=2;x.beginPath();x.moveTo(0,yS);x.lineTo(W,yS);x.stroke();
+    x.fillStyle='#7fd4ff';x.fillText('YÜZEY',8,yS-6);
+    x.textAlign='right';x.fillText('↑ '+d.toFixed(2)+' m',W-8,yS-6);x.textAlign='left'; }
+  else{ x.fillStyle='#f87171';x.fillText('Bar30 verisi yok',8,18); }
+  if(av){ x.strokeStyle='#c9a24b';x.lineWidth=2;x.beginPath();x.moveTo(0,yF);x.lineTo(W,yF);x.stroke();
+    for(let px=0;px<W;px+=13){x.beginPath();x.moveTo(px,yF);x.lineTo(px+7,yF+7);x.stroke();}
+    x.fillStyle='#e0b96a';x.fillText('TABAN',8,yF+17);
+    x.textAlign='right';x.fillText('↓ '+a.toFixed(2)+' m',W-8,yF+17);x.textAlign='left'; }
+  // AUV
+  x.save();x.translate(W/2,yV);
+  x.fillStyle='#2dd4bf';x.strokeStyle='#0b2233';x.lineWidth=2;
+  x.beginPath();x.moveTo(-22,-5);x.lineTo(20,-5);x.lineTo(27,4);x.lineTo(-22,4);x.closePath();x.fill();x.stroke();
+  x.fillStyle='#04121a';x.font='bold 11px system-ui';x.textAlign='center';x.fillText('AUV',-2,4);
+  x.restore();x.textAlign='left';
+}
+// ---- pusula ----
+function drawCompass(yaw){
+  const c=$('compass'),x=c.getContext('2d'),W=c.width,H=c.height,cx=W/2,cy=H/2,R=W/2-8;
+  x.clearRect(0,0,W,H);
+  x.beginPath();x.arc(cx,cy,R,0,7);x.fillStyle='#0c1622';x.fill();
+  x.lineWidth=2;x.strokeStyle='#22303f';x.stroke();
+  const yv=(yaw==null?0:yaw);
+  for(let i=0;i<360;i+=30){const a=(i-yv-90)*Math.PI/180;
+    const r1=R-3,r2=(i%90===0)?R-11:R-7;
+    x.beginPath();x.moveTo(cx+r1*Math.cos(a),cy+r1*Math.sin(a));x.lineTo(cx+r2*Math.cos(a),cy+r2*Math.sin(a));
+    x.strokeStyle=(i%90===0)?'#5b6b7d':'#2a3a4a';x.lineWidth=(i%90===0)?2:1;x.stroke();}
+  const dirs=[['N',0],['E',90],['S',180],['W',270]];x.fillStyle='#8397ab';x.font='bold 10px system-ui';x.textAlign='center';x.textBaseline='middle';
+  dirs.forEach(([t,d])=>{const a=(d-yv-90)*Math.PI/180,r=R-20;x.fillStyle=(t==='N')?'#2dd4bf':'#8397ab';x.fillText(t,cx+r*Math.cos(a),cy+r*Math.sin(a));});
+  // sabit ust ok (aracin pruvasi)
+  x.fillStyle='#38bdf8';x.beginPath();x.moveTo(cx,cy-R+2);x.lineTo(cx-5,cy-R+12);x.lineTo(cx+5,cy-R+12);x.closePath();x.fill();
+  x.fillStyle='#e8eef4';x.font='bold 20px system-ui';x.textBaseline='middle';
+  x.fillText((yaw==null?'—':Math.round(yaw))+'°',cx,cy);
+}
+
+async function poll(){
+  try{
+    const d=await(await fetch('/sensors')).json();
+    const camOk=d.cameras&&Object.values(d.cameras).some(s=>(s||'').includes('canli'));
+    setDot('d-ros', (camOk||d.depth_m!=null)?'ok':'bad');
+    setDot('d-fc', d.connected?'ok':'bad');
+    setDot('d-zed', (d.cameras&&(d.cameras.zed||'').includes('canli'))?'ok':'bad');
+    $('c-batt').textContent = d.voltage!=null?(+d.voltage).toFixed(1)+' V':'— V';
+    setTile('t-depth','depth',d.depth_m,d.depth_valid);
+    setTile('t-alt','alt',d.altitude_m,d.sonar_valid);
+    setTile('t-col','col',d.water_column_m,d.depth_valid&&d.sonar_valid);
+    $('yaw').textContent=d.yaw!=null?Math.round(d.yaw):'—';
+    $('roll').textContent=d.roll!=null?d.roll:'—';
+    $('pitch').textContent=d.pitch!=null?d.pitch:'—';
+    if(d.roll!=null)$('b-roll').style.left=(50+Math.max(-45,Math.min(45,d.roll))/45*50)+'%';
+    if(d.pitch!=null)$('b-pitch').style.left=(50+Math.max(-45,Math.min(45,d.pitch))/45*50)+'%';
+    $('s-ros').textContent=(camOk||d.depth_m!=null)?'bağlı':'yok';
+    $('s-fc').textContent=d.connected?'bağlı':'kopuk';
+    $('s-cam').textContent=d.cameras?Object.entries(d.cameras).map(([k,v])=>k+': '+v).join(' · '):'—';
+    drawProfile(d.depth_m,d.altitude_m,d.depth_valid,d.sonar_valid);
+    drawCompass(d.yaw);
+  }catch(e){ setDot('d-ros','bad'); $('s-ros').textContent='sunucu yok'; }
+}
+drawProfile(null,null,false,false);drawCompass(null);
+setInterval(poll,300);poll();
+</script>
+</body>
+</html>

@@ -14,8 +14,15 @@ edildiğinde "nerede kaldık" bilgisini taşır.
 ## Şu an ÇALIŞAN
 - **PC web paneli** (`web/app.py`, Flask :5000): Bar30 derinlik + Ping sonar +
   IMU (V6X COM7'den) + D435 + Mini ROV kamera. `python web/app.py` (demo: `--demo`).
-- **Motor test:** ArduSub beta'da MAV_CMD_DO_MOTOR_TEST bozuk ("bad test type");
-  motorlar **QGC → Motors** sayfasından dönüyor (8'i de sağlam, çift yönlü).
+- **Motor test:** ✅ ÇÖZÜLDÜ — web arayüzünden (`/test` + `/control`) çalışıyor, 8'i de
+  fiziksel dönüyor. "bad test type 0.00" hatası **firmware bug'ı DEĞİLMİŞ**: ArduSub
+  DO_MOTOR_TEST'te "test type"ı param6 (COMMAND_INT `y` = MOTOR_TEST_ORDER) alanından
+  okuyor ve **2 (MOTOR_TEST_ORDER_BOARD)** olmasını şart koşuyor; biz 0 gönderdiğimiz için
+  reddediyordu. Düzeltme (`mav_bridge`): y=2 + komutu **20Hz** tekrarla (500ms watchdog,
+  yoksa "timed out"→disarm) + **her testten önce ARM** (ArduSub test bitince oto-disarm).
+  Ayrıca test sıra no **0-tabanlı**: seq k → SERVO çıkış k+1. Bridge UI "Motor N"→seq(N-1)→
+  fiziksel çıkış N eşliyor. Testler arası **~10s cooldown** (ArduSub kuralı; UI'da beklemeli).
+  QGC'ye artık gerek yok. Canlı COMMAND_ACK + /mav/servo_out ile doğrulandı.
 - **Ping sonar:** TELEM1'e takılı; `SERIAL1_PROTOCOL=9, RNGFND1_TYPE=23` ile açıldı.
 - **Mini ROV kamera:** BlueOS'ta RTSP stream ("MiniROV-Web", `rtsp://192.168.2.2:8554/minirov`).
 
@@ -24,29 +31,37 @@ Motor testi için ARM açılabilsin diye V6X'te **`BATT_MONITOR=0`** yapıldı (
 güç kaynağı var, batarya yok). Orijinal `BATT_MONITOR=8`, yedek:
 `ardusub_params/bench_yedek_orijinal.json`. **Gerçek bataryadan/yarıştan önce geri aç.**
 
-## 🔧 KALDIĞIMIZ YER — ROS2 geçişi (Faz 1, YARIM)
+## 🔧 ROS2 geçişi — KÖPRÜ TAMAMLANDI (kod tarafı), Jetson'da DEPLOY bekliyor
 Hedef: tüm veriler ROS2 Humble'dan geçip web'de görünsün.
 Karar: internet yok + PC'de admin yok → rosbridge/web_video_server apt ile
 kurulamadı; yerine **custom ROS2→web köprüsü** (Flask+rclpy+PIL) seçildi.
 
-Jetson `~/webpanel/`'e deploy edilenler (kaynak: repo `jetson/`):
-- `d435_ros2_node.py` — pyrealsense2 → `/camera/color/image_raw` **(çalışıyor ✓)**
-- `ros2_web_bridge.py` — :8000, ROS2 topic → MJPEG+JSON (`/stream/color` rsweb-uyumlu)
-- `webpanel_ros2.sh` — rsweb'i durdur + d435 node + köprüyü başlat
+**Repoda tamamlanan (10 Tem 2026):**
+- `jetson/webpanel_ros2.sh` — rsweb'i artık **kalıcı emekli ediyor** (systemd
+  stop/disable/**mask** + supervisor + pkill), `:8000`'i `fuser`/`ss` ile garanti
+  boşaltıyor, boşalmazsa `8080`'e düşüyor. `--with-mav` ile `mav_bridge`'i de başlatır.
+- `jetson/ros2_web_bridge.py` — `/mav/attitude` + `/mav/battery` aboneliği eklendi;
+  `/sensors` artık `roll/pitch/voltage/connected` da veriyor (web paneliyle **birebir**
+  sözleşme). Yeni **`--demo`** bayrağı: rclpy'siz sentetik veri (yerelde test).
+- `web/config.py` + `web/app.py` — `SENSOR_SOURCE='bridge'` seçilince panel sensörleri
+  köprünün `/sensors`'ından çeker (`BridgeReader`). Böylece V6X Jetson'a taşınınca panel
+  tamamen ROS2'den beslenir; V6X PC'deyken `'mavlink'` (varsayılan) çalışmaya devam eder.
+- `scripts/webpanel-ros2.service` — köprüyü açılışta başlatan systemd birimi (`qayra`).
 
-**Takılan nokta:** `ros2_web_bridge` **:8000'e bağlanamıyor** — `rsweb` (Jetson'daki
-eski D435 web app'i, `~/rsweb/app.py`) pkill sonrası yeniden doğuyor (muhtemelen
-systemd servisi/supervisor) ve portu tutuyor.
-
-### Sıradaki adımlar
-1. **rsweb'i kalıcı durdur:** `systemctl` ile servisini bul/durdur/disable et
-   (`systemctl list-units | grep -i rsweb`), ya da köprüyü başka porta al
-   (`ros2_web_bridge.py --port 8001`) ve PC panel `web/config.py` D435 kaynağını güncelle.
-2. Köprüyü doğrula: `http://192.168.2.135:8000/` (D435 ROS2 + ZED) ve `/stream/color`.
-3. **Faz 2:** V6X USB'yi **PC'den Jetson'a taşı** → Jetson'da `mav_bridge` ROS2
-   node'u (repo `ros2_ws/src/auv_mav_bridge`) Bar30/sonar/IMU/GPS'i topic'lere yayınlasın;
-   köprü zaten `/mav/depth`, `/mav/rangefinder`, `/mav/heading_deg`'e abone.
-4. Web arayüzünü tamamen ROS2'den besle; Mini ROV kamerasını da (gscam RTSP→topic) ROS2'ye al.
+**Jetson'da yapılacak DEPLOY + doğrulama:**
+1. `jetson/` dosyalarını `~/webpanel/`'e kopyala (SFTP). rsweb'i bir kez emekli et:
+   `sudo systemctl disable --now rsweb; sudo systemctl mask rsweb`
+   (unit adı farklıysa `systemctl list-units --all | grep -i rsweb`).
+2. Kamera-only test: `bash ~/webpanel/webpanel_ros2.sh` → çıktıda `:8000` köprüde,
+   `http://192.168.2.135:8000/` (D435 + ZED) ve `/stream/color` açılıyor mu.
+3. **Faz 2** (sensörler): V6X USB'yi **PC'den Jetson'a taşı**, `mavlink-router`'ı
+   çalıştır (`/dev/ttyFC → udpin 14551`), `ros2_ws`'i `colcon build` et, sonra
+   `bash ~/webpanel/webpanel_ros2.sh --with-mav` → `curl localhost:8000/sensors`
+   gerçek derinlik/sonar/pruva/roll/pitch/batarya veriyor mu.
+   Not: köprü `mav_bridge`'i `depth_source=pressure2` ile başlatır (Bar30 paritesi).
+4. PC panelini ROS2'ye al: `SENSOR_SOURCE=bridge python web/app.py` (D435 zaten köprüden).
+   Kalıcı için: `webpanel-ros2.service`'i kur.
+5. Kalan iş: Mini ROV kamerasını da (gscam RTSP→topic) ROS2'ye al.
 
 ## Jetson erişimi
 - SSH: `qayra@192.168.2.135` — **şifre repo'ya yazılmadı, takımdan al.**

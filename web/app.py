@@ -213,6 +213,41 @@ class MavReader:
             time.sleep(0.2)
 
 
+class BridgeReader:
+    """Sensor verisini Jetson ROS2 koprusunun /sensors JSON'indan ceker.
+    MavReader ile ayni snapshot() arayuzu -> app.py acisindan drop-in.
+    Tam ROS2 gecisinde (V6X Jetson'da) SENSOR_SOURCE='bridge' ile secilir."""
+
+    def __init__(self, url):
+        self.url = url
+        self.data = {
+            'connected': False, 'depth_m': None, 'altitude_m': None,
+            'water_column_m': None, 'roll': None, 'pitch': None, 'yaw': None,
+            'voltage': None, 'sonar_valid': False, 'depth_valid': False,
+        }
+        self._lock = threading.Lock()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def snapshot(self):
+        with self._lock:
+            return dict(self.data)
+
+    def _run(self):
+        import json
+        import urllib.request
+        while True:
+            try:
+                with urllib.request.urlopen(self.url, timeout=2.0) as r:
+                    d = json.loads(r.read().decode())
+                # kopru 'connected'i sensor tazeligine gore zaten hesapliyor
+                with self._lock:
+                    self.data = d
+            except Exception:
+                with self._lock:
+                    self.data['connected'] = False
+            time.sleep(0.2)
+
+
 # ============================================================ Flask
 cameras = {}
 mav = None
@@ -230,6 +265,13 @@ def mjpeg(cam):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/control')
+def control():
+    # Otonom kontrol + GPS waypoint + motor paneli. Tarayici JS'i dogrudan
+    # Jetson mission WS'ine (config.MISSION_WS_URL) baglanir.
+    return render_template('control.html', ws_url=config.MISSION_WS_URL)
 
 
 @app.route('/video/<cam>')
@@ -256,10 +298,16 @@ def main():
 
     cameras['d435'] = CameraStream('D435', config.D435_SOURCES)
     cameras['minirov'] = CameraStream('Mini ROV', config.MINIROV_SOURCES)
-    mav = MavReader()
 
-    print(f'Web arayuzu: http://localhost:{config.PORT}  '
-          f'({"DEMO" if DEMO else config.MAVLINK_URL})')
+    # Sensor kaynagi: demo -> sahte; 'bridge' -> ROS2 koprusu /sensors; aksi -> MAVLink
+    if not DEMO and config.SENSOR_SOURCE == 'bridge':
+        mav = BridgeReader(config.BRIDGE_SENSORS_URL)
+        src = f'bridge {config.BRIDGE_SENSORS_URL}'
+    else:
+        mav = MavReader()
+        src = 'DEMO' if DEMO else config.MAVLINK_URL
+
+    print(f'Web arayuzu: http://localhost:{config.PORT}  ({src})')
     app.run(host=config.HOST, port=config.PORT, threaded=True, debug=False)
 
 

@@ -1,0 +1,29 @@
+# ROS2 -> web koprusunu acilista baslatan systemd birimi (rsweb'in yerini alir).
+# Kamera(lar) + sensorler ROS2 topic'lerinden :8000'de servis edilir.
+#
+# Kurulum (Jetson, kullanici qayra):
+#   # 1) rsweb'i BIR KEZ kalici emekli et (servis qayra olarak sudo'suz calisir):
+#   sudo systemctl disable --now rsweb 2>/dev/null; sudo systemctl mask rsweb 2>/dev/null
+#   #    (unit adi farkliysa: systemctl list-units --all | grep -i rsweb ile bul)
+#   # 2) servisi kur:
+#   sudo cp webpanel-ros2.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now webpanel-ros2
+#
+# Not: webpanel_ros2.sh nohup ile alt surecleri baslatir; Type=oneshot +
+# RemainAfterExit=yes ile systemd unit'i "active" tutar, surecler acilista kalir.
+[Unit]
+Description=AUV ROS2 -> web koprusu (kameralar + sensorler, :8000)
+After=network-online.target mavlink-router.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=qayra
+Environment=HOME=/home/qayra
+# --with-mav: mav_bridge'i de baslatir (sensorler). Yalnizca kamera icin cikar.
+ExecStart=/bin/bash -lc '/home/qayra/webpanel/webpanel_ros2.sh --with-mav'
+ExecStop=/bin/bash -lc 'pkill -f ros2_web_bridge.py; pkill -f d435_ros2_node.py; pkill -f auv_mav_bridge'
+
+[Install]
+WantedBy=multi-user.target

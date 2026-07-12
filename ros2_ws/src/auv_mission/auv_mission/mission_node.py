@@ -20,14 +20,14 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
-from std_msgs.msg import Float32, Bool, String, Float32MultiArray
+from std_msgs.msg import Float32, Bool, String, Float32MultiArray, UInt16MultiArray
 from std_srvs.srv import Trigger
 from geometry_msgs.msg import Twist
 
 from auv_msgs.msg import (ManualControl, MissionState, VerticalState,
                           DeadReckonState, LaneStatus)
 
-from .primitives import build_steps
+from .primitives import build_steps, GotoTargetStep
 from .ws_server import WsServer
 
 try:
@@ -147,6 +147,8 @@ class MissionNode(Node):
         self.pub_mode = self.create_publisher(String, '/mav/cmd/mode', 10)
         self.pub_state = self.create_publisher(MissionState, '/mission/state', qos)
         self.pub_bias = self.create_publisher(Float32MultiArray, '/dr/set_current_bias', 10)
+        self.pub_motor_test = self.create_publisher(UInt16MultiArray, '/mav/cmd/motor_test', 10)
+        self.pub_direct = self.create_publisher(UInt16MultiArray, '/mav/cmd/direct_output', 10)
 
         self.create_subscription(Float32, '/mav/heading_deg', self._s_hdg, qos)
         self.create_subscription(VerticalState, '/vertical_state', self._s_vert, qos)
@@ -155,6 +157,8 @@ class MissionNode(Node):
         self.create_subscription(LaneStatus, '/lane/status', self._s_lane_st, qos)
         self.create_subscription(Bool, '/mav/armed', self._s_armed, 10)
         self.create_subscription(String, '/mav/mode', self._s_mode, 10)
+        self.create_subscription(UInt16MultiArray, '/mav/servo_out', self._s_servo, qos)
+        self._servo = []   # son 8 motor PWM (motor gorsellestirmesi icin)
 
         self.cli_capture = self.create_client(Trigger, '/dr/capture_origin')
 
@@ -183,6 +187,7 @@ class MissionNode(Node):
     def _s_dr(self, m):   self.ctx.dr = m
     def _s_lane_cmd(self, m): self.ctx.lane_cmd = m
     def _s_lane_st(self, m):  self.ctx.lane_status = m.status
+    def _s_servo(self, m):    self._servo = [int(v) for v in m.data]
 
     def _s_vert(self, m):
         self.ctx.depth_m = m.depth_m
@@ -238,6 +243,10 @@ class MissionNode(Node):
                 self.ctx.targets['finish'] = (float(cmd['finish_lat']), float(cmd['finish_lon']))
                 self.ctx.message = 'Hedef koordinatlar alindi'
                 self.get_logger().info(f'Hedefler: {self.ctx.targets}')
+            elif c == 'goto':
+                self.goto_waypoint(float(cmd['lat']), float(cmd['lon']),
+                                   float(cmd.get('speed_mps', 0.5)),
+                                   float(cmd.get('arrive_radius_m', 3.0)))
             elif c == 'set_current_bias':
                 arr = Float32MultiArray()
                 arr.data = [float(cmd.get('east_mps', 0.0)),
@@ -245,6 +254,36 @@ class MissionNode(Node):
                 self.pub_bias.publish(arr)
             elif c == 'capture_origin':
                 self.call_capture_origin()
+            elif c == 'motor_test':
+                if self.state not in (MissionState.STATE_IDLE, MissionState.STATE_MANUAL):
+                    self.ws.broadcast({'type': 'error',
+                                       'message': 'Motor testi yalniz IDLE/MANUAL durumda'})
+                else:
+                    arr = UInt16MultiArray()
+                    arr.data = [int(cmd.get('motor', 0)), int(cmd.get('throttle', 10)),
+                                int(cmd.get('duration', 3))]
+                    self.pub_motor_test.publish(arr)
+            elif c == 'motor_test_stop':
+                arr = UInt16MultiArray()
+                arr.data = [0, 0, 0]     # motor 0 = hepsini durdur
+                self.pub_motor_test.publish(arr)
+            elif c == 'direct_output':
+                # Dogrudan cikis modu: 8 motoru ayni anda sur (cooldown yok, arm gerekmez).
+                if self.state not in (MissionState.STATE_IDLE, MissionState.STATE_MANUAL):
+                    self.ws.broadcast({'type': 'error',
+                                       'message': 'Dogrudan cikis yalniz IDLE/MANUAL durumda'})
+                else:
+                    pwms = cmd.get('pwms', [])
+                    arr = UInt16MultiArray()
+                    if pwms and len(pwms) >= 8:
+                        arr.data = [1] + [max(1100, min(1900, int(p))) for p in pwms[:8]]
+                    else:
+                        arr.data = [0]   # gecersiz -> durdur
+                    self.pub_direct.publish(arr)
+            elif c == 'direct_output_stop':
+                arr = UInt16MultiArray()
+                arr.data = [0]
+                self.pub_direct.publish(arr)
             elif c == 'list_missions':
                 self.ws.broadcast({'type': 'missions', 'missions': self.list_missions()})
             else:
@@ -267,6 +306,29 @@ class MissionNode(Node):
         self.state = MISSION_STATE_BY_NAME.get(name, MissionState.STATE_VIDEO_PATTERN)
         self.steps[0].enter(self.ctx)
         self.get_logger().info(f'GOREV BASLADI: {name} ({len(self.steps)} adim)')
+
+    def goto_waypoint(self, lat, lon, speed_mps=0.5, arrive_radius_m=3.0):
+        """Panelden tek nokta hedefi: dinamik 1 adimli GotoTargetStep gorevi.
+
+        On kosul: DR origin (GPS fix) yakalanmis olmali; degilse GotoTargetStep
+        'HEDEF/DR yok' deyip hemen biter. Once ARM + ALT_HOLD + capture_origin
+        (panel dugmeleri) yapilmali. STOP ile her an iptal.
+        """
+        if self.state not in (MissionState.STATE_IDLE, MissionState.STATE_MANUAL,
+                               MissionState.STATE_ABORTED):
+            self.ctx.message = 'Once STOP ile mevcut gorevi durdurun'
+            return
+        self.ctx.targets['wp'] = (lat, lon)
+        self.steps = [GotoTargetStep(target='wp', arrive_radius_m=arrive_radius_m,
+                                     speed_mps=speed_mps)]
+        self.step_i = 0
+        self.step_t = 0.0
+        self.mission_t = 0.0
+        self.ctx.target_heading_deg = self.ctx.yaw_deg
+        self.ctx.message = f'Waypoint: {lat:.6f}, {lon:.6f}'
+        self.state = MissionState.STATE_AUTONOMOUS_NAV
+        self.steps[0].enter(self.ctx)
+        self.get_logger().info(f'WAYPOINT git: {lat:.6f}, {lon:.6f}')
 
     def abort(self, reason: str):
         if self.state in (MissionState.STATE_IDLE, MissionState.STATE_MANUAL):
@@ -381,6 +443,7 @@ class MissionNode(Node):
                     'speed_mps': round(dr.speed_mps, 2),
                 },
                 'lane_status': self.ctx.lane_status,
+                'motors': self._servo,
             },
         })
 
