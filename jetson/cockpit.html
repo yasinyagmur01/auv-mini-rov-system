@@ -633,6 +633,7 @@ const MOTORS=[{n:1,x:182,y:58,t:'h',c:'#34d399',a:-40},{n:2,x:78,y:58,t:'h',c:'#
   {n:5,x:206,y:116,t:'v',c:'#34d399'},{n:6,x:54,y:116,t:'v',c:'#22d3ee'},
   {n:7,x:194,y:182,t:'v',c:'#22d3ee'},{n:8,x:66,y:182,t:'v',c:'#34d399'}];
 let seqTimer=null, mtCoolUntil=0, doRunning=false, doRefresh=null, nvHold=null;
+let mrovUnlocked=false;   // Mini ROV motor GÜVENLİK KİLİDİ (varsayılan KİLİTLİ — su dışı yanar)
 const MT_COOLDOWN=11;
 function mtCoolLeft(){ return Math.max(0,Math.ceil((mtCoolUntil-Date.now())/1000)); }
 function flashMotor(id, dur){ const hl=$(id); if(hl){ hl.setAttribute('stroke-width','3'); setTimeout(()=>hl.setAttribute('stroke-width','0'), (dur||3)*1000); } }
@@ -645,6 +646,7 @@ window.motorTest = function(n){
   $('mtStatus').textContent='▶ AUV Motor '+n+' dönüyor'; logEvent('AUV Motor '+n+' testi (%'+thr+', '+dur+'sn)');
 };
 window.nvMotor = function(n){
+  if(!mrovUnlocked){ $('nvStatus').textContent='🔒 KİLİTLİ — Mini ROV su dışında olabilir (motorlar YANAR). Suda ise kilidi aç.'; return; }
   const thr=parseInt($('nvThr').value)||10, dur=parseInt($('nvDur').value)||3;
   if(!confirm('Mini ROV Motor '+n+': %'+thr+' '+dur+'sn DÖNECEK. Pervaneler boşta/su dışında mı?')) return;
   flashMotor('nvhl'+n, dur);
@@ -673,6 +675,8 @@ const testMode = {
         <div class="status" id="doStatus">1500=dur · 1100 geri · 1900 ileri</div>
       </div></div>
       <div class="card"><div class="hd">Mini ROV Motorları · Navigator (SimpleROV-4)</div><div class="body">
+        <button id="nvLock" class="stop" style="width:100%;margin-bottom:6px">🔒 SU DIŞI — motor KİLİTLİ</button>
+        <div id="nvLockWarn" style="display:none;font-size:11px;color:#ff9fb6;font-weight:700;margin-bottom:6px">⚠ MOTORLAR AKTİF — su dışındaysa DERHAL kilitle!</div>
         <div style="display:flex;gap:10px;align-items:center">
           <div id="nvdiagram" style="flex:0 0 42%;max-width:150px"></div>
           <div style="flex:1;min-width:0">
@@ -740,7 +744,25 @@ const testMode = {
     for(let i=1;i<=4;i++) $('nvo'+i).addEventListener('input',()=>{ $('nvov'+i).textContent=nvLbl(parseInt($('nvo'+i).value)||1500); });
     const nvPwms=()=>[1,2,3,4].map(i=>parseInt($('nvo'+i).value)||1500);
     const nvSendAll=()=>{ fetch('/minirov/direct?pwms='+nvPwms().join(','),{method:'POST'}).catch(()=>{}); };
-    $('nvDoRun').onclick=()=>{ logEvent('Mini ROV doğrudan çıkış TUT (DO_SET_SERVO)','warn'); nvSendAll(); if(nvHold)clearInterval(nvHold); nvHold=setInterval(nvSendAll,500); $('nvStatus').textContent='▶ TUT: PWM periyodik gönderiliyor'; };
+    $('nvDoRun').onclick=()=>{ if(!mrovUnlocked){ $('nvStatus').textContent='🔒 KİLİTLİ — Mini ROV su dışında yanar. Suda ise kilidi aç.'; return; }
+      logEvent('Mini ROV doğrudan çıkış TUT (DO_SET_SERVO)','warn'); nvSendAll(); if(nvHold)clearInterval(nvHold); nvHold=setInterval(nvSendAll,500); $('nvStatus').textContent='▶ TUT: PWM periyodik gönderiliyor'; };
+    // Mini ROV motor GÜVENLİK KİLİDİ (su dışında çalışırsa motorlar yanar)
+    function updateNvLock(){ const b=$('nvLock'); if(!b)return;
+      b.textContent = mrovUnlocked ? '🔓 SUDA — motor AÇIK (kilitle)' : '🔒 SU DIŞI — motor KİLİTLİ';
+      b.className = mrovUnlocked ? 'go' : 'stop';
+      const w=$('nvLockWarn'); if(w) w.style.display = mrovUnlocked ? 'block' : 'none'; }
+    $('nvLock').onclick=()=>{
+      if(!mrovUnlocked){
+        if(!confirm('Mini ROV motorlarının KİLİDİ AÇILACAK.\nMotorlar SUDA MI? Su dışında çalışırsa YANAR!')) return;
+        mrovUnlocked=true; logEvent('Mini ROV motor kilidi AÇILDI (suda)','warn');
+      } else {
+        mrovUnlocked=false; if(nvHold){clearInterval(nvHold);nvHold=null;}
+        fetch('/minirov/direct/stop',{method:'POST'}).catch(()=>{}); fetch('/minirov/motor?motor=0',{method:'POST'}).catch(()=>{});
+        logEvent('Mini ROV motor kilidi kapatıldı + durduruldu');
+      }
+      updateNvLock();
+    };
+    updateNvLock();
     $('nvDoStop').onclick=()=>{ if(nvHold){clearInterval(nvHold);nvHold=null;} for(let i=1;i<=4;i++){$('nvo'+i).value=1500;$('nvov'+i).textContent='1500 dur';} fetch('/minirov/direct/stop',{method:'POST'}).catch(()=>{}); $('nvStatus').textContent='■ durduruldu (nötr 1500)'; logEvent('Mini ROV doğrudan çıkış durduruldu'); };
   },
   unmount(){ if(seqTimer){clearTimeout(seqTimer);seqTimer=null;} if(doRefresh){clearInterval(doRefresh);doRefresh=null;} if(nvHold){clearInterval(nvHold);nvHold=null;} doRunning=false; }

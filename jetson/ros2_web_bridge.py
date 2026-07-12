@@ -678,6 +678,25 @@ def control_page():
 # -> Navigator ArduSub (sysid 1, comp 1). Sunucu-tarafi relay (CORS yok).
 NAV_M2R_URL = 'http://192.168.2.2:6040/mavlink'
 
+# Mini ROV dogrudan cikis (DO_SET_SERVO) GUVENLIK: DO_SET_SERVO PWM'i degistirilene
+# kadar TUTAR. Istemci koparsa/tarayici kapanirsa motorlar takili kalir -> su disinda
+# YANMA riski. Dead-man watchdog: son /minirov/direct'ten >2 sn gecerse notrle (1500).
+_mrov_direct_last = 0.0
+_mrov_direct_active = False
+
+
+def _mrov_direct_watchdog():
+    global _mrov_direct_active
+    while True:
+        time.sleep(0.5)
+        if _mrov_direct_active and (time.time() - _mrov_direct_last) > 2.0:
+            _mrov_direct_active = False
+            try:
+                for ch in range(1, 5):
+                    _nav_set_servo(ch, 1500)   # notr — motorlar dursun
+            except Exception:
+                pass
+
 
 def _nav_motor_test(motor, throttle_pct, duration_s):
     import json as _json
@@ -739,6 +758,9 @@ def minirov_direct():
             return jsonify({'ok': False, 'error': '4 PWM gerekir (1100-1900)'}), 400
         for ch, p in enumerate(pwms, start=1):
             _nav_set_servo(ch, p)
+        global _mrov_direct_last, _mrov_direct_active
+        _mrov_direct_last = time.time()
+        _mrov_direct_active = True            # dead-man watchdog'u besle
         return jsonify({'ok': True, 'pwms': pwms})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 502
@@ -747,6 +769,8 @@ def minirov_direct():
 @app.route('/minirov/direct/stop', methods=['POST'])
 def minirov_direct_stop():
     try:
+        global _mrov_direct_active
+        _mrov_direct_active = False
         for ch in range(1, 5):
             _nav_set_servo(ch, 1500)   # notr
         return jsonify({'ok': True, 'msg': 'Mini ROV dogrudan cikis notr (1500)'})
@@ -791,6 +815,8 @@ def main():
     else:
         node = build_ros_node()
         print(f'ROS2 web koprusu: http://0.0.0.0:{args.port}')
+    # Mini ROV dogrudan cikis dead-man watchdog (istemci koparsa motorlar takili kalmasin)
+    threading.Thread(target=_mrov_direct_watchdog, daemon=True).start()
     app.run(host='0.0.0.0', port=args.port, threaded=True)
 
 
