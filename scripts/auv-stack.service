@@ -1,19 +1,16 @@
-# AUV çekirdek yığını — açılışta otomatik başlatma (reboot'ta 'nohup' kaybını çözer).
-# Başlatır: MAVLink router + mav_bridge + mission_node + web köprüsü.
-# 'webpanel-ros2.service'in yerini alır (onu disable et).
+# AUV çekirdek yığını + web köprüsü — TEK boot servisi.
+# (Eski çakışan taslakların yerini alır: auv-bringup.service + webpanel-ros2.service SİLİNDİ.)
+# ui/ paneli AYRI: ui/auv-ui.service (:8080) — ikisi de enable edilir.
 #
-# Kurulum (Jetson, kullanıcı qayra — kartlara bağlı PC'den deploy sonrası):
-#   sudo systemctl disable --now webpanel-ros2 2>/dev/null
-#   cp scripts/auv_stack_start.sh /home/qayra/ && chmod +x /home/qayra/auv_stack_start.sh
-#   sudo cp scripts/auv-stack.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now auv-stack
-#   systemctl status auv-stack     # kontrol
-#
-# NOT: TASLAK — Jetson'da test edilip yollar doğrulanmalı. mav_router.py ve
-# webpanel/ros2_web_bridge.py /home/qayra altında olmalı.
+# Kurulum (Jetson, kullanıcı qayra):
+#   sudo cp ~/auv/scripts/auv-stack.service /etc/systemd/system/
+#   sudo cp ~/auv/ui/auv-ui.service          /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now mavlink-router auv-stack auv-ui
+# Doğrula: reboot → cockpit :8000 + ui :8080 + QGC :14550 (mavlink-router paylaşımı) otomatik gelir.
 [Unit]
-Description=AUV core stack (mavlink router + mav_bridge + mission + web panel :8000)
-After=network-online.target
+Description=AUV cekirdek yigini + web koprusu (mav_bridge + vertical + dr + mission + cockpit :8000)
+After=network-online.target mavlink-router.service
 Wants=network-online.target
 
 [Service]
@@ -21,8 +18,8 @@ Type=oneshot
 RemainAfterExit=yes
 User=qayra
 Environment=HOME=/home/qayra
-ExecStart=/bin/bash -lc '/home/qayra/auv_stack_start.sh'
-ExecStop=/bin/bash -lc 'pkill -f mav_router.py; pkill -f auv_mav_bridge; pkill -f auv_mission; pkill -f ros2_web_bridge.py'
+ExecStart=/bin/bash -lc '%h/auv/scripts/auv_stack_start.sh'
+ExecStop=/bin/bash -lc 'pkill -f bridge_node; pkill -f vertical_state_node; pkill -f dr_node; pkill -f mission_node; pkill -f ros2_web_bridge.py'
 
 [Install]
 WantedBy=multi-user.target
