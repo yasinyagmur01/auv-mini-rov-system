@@ -65,7 +65,11 @@ WATERTEMP_TOPIC = '/mav/water_temp'   # std_msgs/Float32 (Bar30 su sicakligi, C)
 # ZED VO/odometri topic'i. VARSAYILAN BOŞ = kapalı (demo sentetik zed_pose kalir).
 # ARAÇTA: `ros2 topic list | grep zed` ile gercek odom topic'ini bul (nav_msgs/Odometry;
 # tipik: /zed/zed_node/odom) ve buraya yaz -> gercek VO izi /sensors.zed_pose'a akar.
-ZED_ODOM_TOPIC = ''
+ZED_ODOM_TOPIC = '/zed/zed_node/odom'
+# ZED 3D SLAM nokta bulutu (PointCloud2) -> kopru seyreltip /pointcloud JSON'a servis eder.
+ZED_PCL_TOPIC = '/zed/zed_node/point_cloud/cloud_registered'
+PCL_MAX_POINTS = 3500     # tarayiciya gonderilecek azami nokta (bant genisligi kontrolu)
+PCL_MIN_PERIOD = 0.5      # sn; bu periyottan sik islemez (~2 Hz)
 # Mini ROV (BlueOS/Navigator) mavlink2rest sysid. ARAÇTA DOĞRULA: docs SYSID_THISMAV=2
 # der ama motor-test POST target_system=1 kullaniyor. GET yolunda /mavlink agacina
 # bakip aracin ilan ettigi sysid'yi teyit et.
@@ -147,7 +151,7 @@ def build_ros_node():
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
-    from sensor_msgs.msg import Image, CompressedImage, Range, BatteryState, NavSatFix
+    from sensor_msgs.msg import Image, CompressedImage, Range, BatteryState, NavSatFix, PointCloud2
     from std_msgs.msg import Float32, Bool, String
     from geometry_msgs.msg import Vector3Stamped
     from auv_msgs.msg import GpsInfo
@@ -192,6 +196,13 @@ def build_ros_node():
                 from nav_msgs.msg import Odometry
                 self.create_subscription(Odometry, ZED_ODOM_TOPIC, self._zed_cb, sqos)
                 self.get_logger().info(f'ZED odometri aboneligi: {ZED_ODOM_TOPIC}')
+            # ZED 3D nokta bulutu (SLAM) -> seyreltilip /pointcloud'a servis edilir
+            self._pcl = {'n': 0, 'pts': []}
+            self._pcl_lock = threading.Lock()
+            self._pcl_stamp = 0.0
+            if ZED_PCL_TOPIC:
+                self.create_subscription(PointCloud2, ZED_PCL_TOPIC, self._pcl_cb, img_qos)
+                self.get_logger().info(f'ZED nokta bulutu aboneligi: {ZED_PCL_TOPIC}')
             self.get_logger().info('ROS2 web koprusu hazir. Topic aboneleri kuruldu.')
             # Mini ROV telemetrisi ROS2 disi (BlueOS 192.168.2.2) -> mavlink2rest GET poll
             self._mrov_tok = None      # son tazelik damgasi (mesaj sayaci/zamani)
@@ -305,6 +316,33 @@ def build_ros_node():
             self.sensors['zed_pose'] = {'x': round(p.x, 2), 'y': round(p.y, 2),
                                         'yaw': round(yaw, 1), 'demo': False}
             self.sensor_stamp = time.time()
+
+        def _pcl_cb(self, msg):
+            # ZED PointCloud2 -> seyreltilmis xyz listesi (tarayici 3D render). ~2 Hz, NaN filtreli.
+            now = time.time()
+            if now - self._pcl_stamp < PCL_MIN_PERIOD:
+                return
+            self._pcl_stamp = now
+            try:
+                step = int(msg.point_step)
+                raw = bytes(msg.data)
+                n = len(raw) // step
+                if n <= 0:
+                    return
+                a = np.frombuffer(raw, dtype=np.uint8).reshape(n, step)
+                xyz = a[:, 0:12].copy().view(np.float32).reshape(-1, 3)   # x@0,y@4,z@8 (float32)
+                xyz = xyz[np.isfinite(xyz).all(axis=1)]                   # ONCE NaN/inf ele
+                if len(xyz) > PCL_MAX_POINTS:                             # SONRA seyrelt (yogunlugu korur)
+                    xyz = xyz[::max(1, len(xyz) // PCL_MAX_POINTS)][:PCL_MAX_POINTS]
+                pts = np.round(xyz, 2).flatten().tolist()
+                with self._pcl_lock:
+                    self._pcl = {'n': len(pts) // 3, 'pts': pts}
+            except Exception:
+                pass
+
+        def get_pointcloud(self):
+            with self._pcl_lock:
+                return dict(self._pcl)
 
         # ---- Mini ROV (BlueOS/Navigator) telemetrisi: mavlink2rest GET ----
         # DIKKAT: mavlink2rest JSON alan sekli surume bagli degisir. Alan cikarimlari
@@ -498,6 +536,17 @@ class DemoSource:
     def cam_status(self, name):
         return 'demo'
 
+    def get_pointcloud(self):
+        # DEMO: sentetik nokta bulutu (spiral disk) — gercekte ZED PointCloud2'den gelir
+        pts = []
+        for i in range(1400):
+            ang = i * 2.399963
+            rad = (i / 1400.0) ** 0.5 * 2.2
+            pts += [round(rad * math.cos(ang), 2),
+                    round(0.5 * math.sin(i * 0.04) - 0.4, 2),
+                    round(rad * math.sin(ang) + 2.2, 2)]
+        return {'n': len(pts) // 3, 'pts': pts}
+
     def snapshot(self):
         return _sensor_snapshot(self.sensors, self.sensor_stamp, self.cam_status)
 
@@ -666,6 +715,12 @@ def panel_css():
 @app.route('/sensors')
 def sensors():
     return jsonify(node.snapshot())
+
+
+@app.route('/pointcloud')
+def pointcloud():
+    # ZED 3D SLAM nokta bulutu (seyreltilmis). Kaynak yoksa {n:0,pts:[]}.
+    return jsonify(node.get_pointcloud())
 
 
 @app.route('/control')

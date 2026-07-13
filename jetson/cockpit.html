@@ -72,6 +72,15 @@
   .slam .big{font-size:34px;opacity:.5}
   .slam .t{font-weight:700;color:var(--text);font-size:13px}
   .slam .s{font-size:11px;max-width:260px}
+  .slamhd{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .slamtabs{display:flex;gap:4px}
+  .slamtabs .stab{cursor:pointer;font-size:11px;font-weight:700;padding:3px 9px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--muted)}
+  .slamtabs .stab.on{background:var(--accent);color:#04121a;border-color:var(--accent)}
+  /* Sağ sütun: VO + Sonar yan yana */
+  .envrow{display:flex;flex-direction:row;gap:8px;min-height:0;min-width:0;overflow:hidden}
+  .envcol{flex:1 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:7px}
+  .envhd{font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .envhd .r{font-size:9px;color:var(--muted);font-weight:400}
   .clocklog{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);
     border-radius:var(--radius);overflow:hidden;min-height:0}
   #clock{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:800;font-size:22px;
@@ -168,6 +177,51 @@
   #gpsbigmap{flex:1 1 auto;min-height:0;width:100%;border-radius:10px;background:#0b0f11}
   #gpsbig .info{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:8px;color:var(--muted)}
   #gpsbig .info b{color:var(--text);font-variant-numeric:tabular-nums}
+  /* Manuel sürüş (USB gamepad): header düğmeleri + panel */
+  .manbtns{display:flex;gap:6px;align-items:center}
+  .manbtns .manbtn{cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text)}
+  .manbtns .manbtn.auv{border-color:var(--accent)} .manbtns .manbtn.mrov{border-color:#a78bfa}
+  .manbtns .manbtn.on{background:var(--accent);color:#04121a;border-color:var(--accent)}
+  #manpanel{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:62;width:min(92vw,360px);display:none;flex-direction:column;background:rgba(16,22,25,.98);backdrop-filter:blur(10px);border:1px solid var(--border2);border-top:0;border-radius:0 0 14px 14px;box-shadow:var(--shadow);padding:12px 14px}
+  #manpanel.show{display:flex}
+  #manpanel .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  #manpanel .close{cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-weight:700}
+  .manveh{padding:1px 8px;border-radius:999px;font-size:12px;font-weight:700}
+  .manveh.auv{background:rgba(34,211,238,.18);color:var(--accent)} .manveh.mrov{background:rgba(167,139,250,.18);color:#a78bfa}
+  #manpanel .row{display:flex;gap:6px;align-items:center;margin:6px 0}
+  #manpanel .row button,#manpanel .row select{flex:1;padding:5px;border-radius:7px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-weight:700;cursor:pointer}
+  #manpanel .kv{display:flex;justify-content:space-between;font-size:12px;margin:5px 0;color:var(--muted)}
+  #manpanel .kv b{color:var(--text)}
+  .axes{margin:8px 0;display:flex;flex-direction:column;gap:6px}
+  .axrow{display:grid;grid-template-columns:60px 1fr 46px;gap:8px;align-items:center;font-size:11px;color:var(--muted)}
+  .axrow b{text-align:right;color:var(--text);font-variant-numeric:tabular-nums}
+  .axbar{position:relative;height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;overflow:hidden}
+  .axbar::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border2)}
+  .axbar i{position:absolute;top:0;bottom:0;width:0}
+  #man-enable{width:100%;margin-top:2px;padding:8px;border-radius:8px;font-weight:800;cursor:pointer}
+  .manfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted)}
+  .man-ok{color:#34d399;font-weight:700}.man-bad{color:#f0426e;font-weight:700}.man-idle{color:var(--muted)}
+  /* AUV sürüş switch (header) + manuel HUD */
+  .mansw{display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px 5px}
+  .mansw .swlbl{font-size:11px;font-weight:800;color:var(--accent);padding:0 2px}
+  .mansw .seg{cursor:pointer;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:7px;background:transparent;border:0;color:var(--muted)}
+  .mansw .seg.on{background:var(--accent);color:#04121a}
+  .mansw .seg#auvMan.on{background:#f5a524;color:#251a04}
+  .manhud{display:none;align-items:center;gap:5px;font-size:11px;padding:3px 9px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);color:var(--accent)}
+  .manhud b{color:var(--text);font-variant-numeric:tabular-nums}
+  /* Motor diyagramı: daha büyük varsayılan + "büyüt" düğmesi + büyük overlay */
+  #mtdiagram svg{max-height:19vh}
+  #nvdiagram svg{max-height:15vh}
+  .diagexp{float:right;cursor:pointer;font-size:11px;font-weight:700;padding:1px 8px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);color:var(--accent)}
+  #diagbig{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:64;width:min(90vw,520px);display:none;flex-direction:column;background:rgba(16,22,25,.98);backdrop-filter:blur(10px);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px}
+  #diagbig.show{display:flex}
+  #diagbig .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  #diagbig .close{cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-weight:700}
+  #diagbig-svg{width:100%;max-height:64vh;display:flex;justify-content:center}
+  #diagbig-svg svg{width:auto;max-width:100%;max-height:64vh}
+  .diaglgnd{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .diaglgnd span{display:flex;align-items:center;gap:6px}
+  .diaglgnd i{width:12px;height:12px;border-radius:3px;display:inline-block}
 </style>
 </head>
 <body>
@@ -181,6 +235,15 @@
     <a data-mode="kontrol">Kontrol</a>
     <a data-mode="test">Motor Test</a>
   </nav>
+  <div class="manbtns">
+    <span class="mansw" id="auvSw" title="AUV sürüş modu (otonom/manuel)">
+      <span class="swlbl">AUV</span>
+      <button class="seg on" id="auvAuto">OTONOM</button>
+      <button class="seg" id="auvMan">MANUEL</button>
+    </span>
+    <span class="manhud" id="auvHud"></span>
+    <button class="manbtn mrov" id="btnManMrov" title="Mini ROV manuel sürüş (USB gamepad)">🎮 M.ROV Manuel</button>
+  </div>
   <div class="spacer"></div>
   <div id="hdrstats">
     <span class="chip hs" id="hs-ros"><span class="dot" id="d-ros"></span>ROS2</span>
@@ -221,9 +284,15 @@
   </div>
 
   <aside class="right">
-    <div class="slam">
-      <div class="t">🛰️ Çevre Algısı — 3D VO / ZED2 SLAM</div>
-      <div class="grid3d"><canvas id="zedcanvas" style="width:100%;height:100%;display:block"></canvas></div>
+    <div class="envrow">
+      <div class="envcol">
+        <div class="envhd">🛰️ 3D VO<span class="r">arkadaş ROS2 VO buraya</span></div>
+        <div class="grid3d" id="view-vo"><canvas id="zedcanvas" style="width:100%;height:100%;display:block"></canvas></div>
+      </div>
+      <div class="envcol">
+        <div class="envhd">📡 Sonar<span class="r">Ping (aşağı)</span></div>
+        <div class="grid3d"><canvas id="sonarcanvas" style="width:100%;height:100%;display:block"></canvas></div>
+      </div>
     </div>
     <div class="clocklog">
       <div id="clock">--:--:--<small>OLAY GÜNLÜĞÜ</small></div>
@@ -237,6 +306,25 @@
   <div class="hd"><b>🛰️ GPS · Konum Haritası</b><span class="close" id="gpsbigclose">✕ kapat</span></div>
   <canvas id="gpsbigmap"></canvas>
   <div class="info" id="gpsbiginfo">—</div>
+</div>
+
+<div id="manpanel">
+  <div class="hd"><b>🎮 Mini ROV — Manuel Sürüş</b><span class="close" id="man-close">✕ kapat</span></div>
+  <div class="kv"><span>Gamepad</span><b id="man-gp" class="man-idle">—</b></div>
+  <div class="axes">
+    <div class="axrow"><span>İleri/Geri</span><div class="axbar" id="ax-xbar"><i></i></div><b id="ax-xnum">—</b></div>
+    <div class="axrow"><span>Yanal</span><div class="axbar" id="ax-ybar"><i></i></div><b id="ax-ynum">—</b></div>
+    <div class="axrow"><span>Dikey</span><div class="axbar" id="ax-zbar"><i></i></div><b id="ax-znum">—</b></div>
+    <div class="axrow"><span>Yaw</span><div class="axbar" id="ax-rbar"><i></i></div><b id="ax-rnum">—</b></div>
+  </div>
+  <button id="man-enable" class="go">▶ Manuel ETKİNLEŞTİR</button>
+  <div class="manfoot"><span id="man-state" class="man-idle">○ beklemede</span><span id="man-txnote">iletim: kapalı (stub)</span></div>
+</div>
+
+<div id="diagbig">
+  <div class="hd"><b id="diagbig-t">Motor Yerleşimi</b><span class="close" id="diagbig-x">✕ kapat</span></div>
+  <div id="diagbig-svg"></div>
+  <div class="diaglgnd" id="diagbig-lg"></div>
 </div>
 
 <script>
@@ -280,7 +368,7 @@ function connectWS(){
   ws.onclose = () => { if(wsOk) logEvent('mission WS koptu','warn'); wsOk=false; setTimeout(connectWS,2000); };
   ws.onerror = () => {};
   ws.onmessage = (ev)=>{ let m; try{m=JSON.parse(ev.data);}catch{return;}
-    if(m.type==='state'){ lastState=Date.now(); if(modeObj.onState) modeObj.onState(m); }
+    if(m.type==='state'){ lastState=Date.now(); lastTel=m.telemetry||lastTel; if(modeObj.onState) modeObj.onState(m); }
     else if(m.type==='error') logEvent('HATA: '+m.message,'alarm');
     else if(m.type==='missions' && modeObj.onMissions) modeObj.onMissions(m.missions);
   };
@@ -290,11 +378,13 @@ function wsSend(o){ if(ws&&wsOk){ws.send(JSON.stringify(o));return true;} logEve
 // --- acil durdurma: AUV ve Mini ROV ayri; GERÇEKTEN durdurur ---
 // Acil durdurma ONAY İSTEMEZ — anında işlem (güvenlik). Tek tık = dur.
 $('btnStopAuv').onclick = ()=>{
+  manDisableAll();                                                // manuel sürüş varsa nötrle+kapat
   const a=wsSend({cmd:'stop'}); const b=wsSend({cmd:'disarm'});   // nötr/abort + disarm (gerçek kesme)
   logEvent('■ ACİL AUV: STOP + DISARM gönderildi', 'alarm');
   if(!a||!b) logEvent('! AUV WS bağlı değil — acil komut GİTMEDİ! Fiziksel acil durdurmayı kullan','alarm');
 };
 $('btnStopMrov').onclick = ()=>{
+  manDisableAll();                                                // manuel sürüş varsa nötrle+kapat
   logEvent('■ ACİL Mini ROV: tüm motorlar durduruluyor', 'alarm');
   fetch('/minirov/motor?motor=0',{method:'POST'}).then(r=>r.json())
     .then(d=>logEvent(d.ok?'✓ Mini ROV motorları durduruldu':'! Mini ROV DURDURULAMADI: '+(d.error||'?'), d.ok?'':'alarm'))
@@ -529,6 +619,7 @@ async function poll(){
     if(popAnchor){ $('popover').innerHTML = popContent(popAnchor.id, d); }   // açık popover'ı tazele
     if(gpsBigOpen) drawGpsMapOn($('gpsbigmap'), d);
     drawZedTrack(d);
+    pushSonar(d); drawSonar();
     // kenar-tetikli olaylar
     if(prevLeak!==undefined && prevLeak!==true && d.leak===true) logEvent('⚠ AUV SIZINTI ALARMI','alarm');
     if(prevMLeak!==undefined && prevMLeak!==true && d.mrov_leak===true) logEvent('⚠ Mini ROV SIZINTI ALARMI','alarm');
@@ -601,11 +692,13 @@ const opMode = {
           </div>
         </div>
       </div></div>
+      <div class="card" style="flex:0 0 auto"><div class="hd">3D SLAM Nokta Bulutu <span class="r">ZED · <span id="pcl-n">—</span> nokta</span></div>
+        <div class="body" style="padding:6px"><canvas id="pclcanvas" style="width:100%;height:150px;display:block;background:#05080a;border-radius:8px"></canvas></div></div>
       <div class="card" style="flex:0 0 auto"><div class="hd">Otonom Karar <span class="r">görev durum makinesi</span></div>
         <div class="body decision" id="decision">
           <div class="d-idle">Otonom görev başlayınca aracın kararları burada akar (mission WS). Örn: "hedefe gidiyor", "boruyu gördü, duruyor".</div>
         </div></div>`;
-    drawProfile(null,null,false,false); drawCompass(null);
+    drawProfile(null,null,false,false); drawCompass(null); pclStart();
   },
   onSensors(d){
     const s=(id,v)=>{const e=$(id);if(e)e.textContent=(v==null?'—':(+v).toFixed(2));};
@@ -624,14 +717,17 @@ const opMode = {
     if(t.lane_status!=null) msg += (msg?' · ':'')+'şerit/hedef: '+t.lane_status;
     if(state==='IDLE' && !msg){ dec.innerHTML='<div class="d-idle">Görev bekleniyor (IDLE). Otonom sürüş başlayınca kararlar burada akar.</div>'; return; }
     dec.innerHTML = `<div class="d-state">${state}</div>`+(step?`<div class="d-step">${step}</div>`:'')+`<div class="d-msg">${msg||'—'}</div>`;
-  }
+  },
+  unmount(){ pclStop(); }
 };
 
 // ---------- Motor Test ----------
-const MOTORS=[{n:1,x:182,y:58,t:'h',c:'#34d399',a:-40},{n:2,x:78,y:58,t:'h',c:'#34d399',a:40},
+// Renk = itici ekseni: yatay/manevra iticileri (h, M1-4) camgöbeği; dikey/derinlik (v, M5-8) kehribar.
+// (Motor NUMARASI, konum, açı ve PWM anlamı DEĞİŞMEDİ — yalnız görsel renk gruplandı.)
+const MOTORS=[{n:1,x:182,y:58,t:'h',c:'#22d3ee',a:-40},{n:2,x:78,y:58,t:'h',c:'#22d3ee',a:40},
   {n:3,x:164,y:236,t:'h',c:'#22d3ee',a:40},{n:4,x:96,y:236,t:'h',c:'#22d3ee',a:-40},
-  {n:5,x:206,y:116,t:'v',c:'#34d399'},{n:6,x:54,y:116,t:'v',c:'#22d3ee'},
-  {n:7,x:194,y:182,t:'v',c:'#22d3ee'},{n:8,x:66,y:182,t:'v',c:'#34d399'}];
+  {n:5,x:206,y:116,t:'v',c:'#f5a524'},{n:6,x:54,y:116,t:'v',c:'#f5a524'},
+  {n:7,x:194,y:182,t:'v',c:'#f5a524'},{n:8,x:66,y:182,t:'v',c:'#f5a524'}];
 let seqTimer=null, mtCoolUntil=0, doRunning=false, doRefresh=null, nvHold=null;
 let mrovUnlocked=false;   // Mini ROV motor GÜVENLİK KİLİDİ (varsayılan KİLİTLİ — su dışı yanar)
 const MT_COOLDOWN=11;
@@ -656,9 +752,9 @@ window.nvMotor = function(n){
 };
 const testMode = {
   mount(el){
-    el.innerHTML = `<div class="card"><div class="hd">AUV Motorları · V6X (Vectored-6DOF)</div><div class="body">
+    el.innerHTML = `<div class="card"><div class="hd">AUV Motorları · V6X (Vectored-6DOF)<button class="diagexp" onclick="openDiag('auv')" title="Motor yerleşimini büyüt">⤢ büyüt</button></div><div class="body">
         <div style="display:flex;gap:10px;align-items:center">
-          <div id="mtdiagram" style="flex:0 0 50%;max-width:210px"></div>
+          <div id="mtdiagram" style="flex:0 0 56%;max-width:250px;cursor:zoom-in" onclick="openDiag('auv')" title="Büyütmek için tıkla"></div>
           <div style="flex:1;min-width:0">
             <div class="row"><span class="label">Gaz%</span><input class="num" id="mtThr" value="20"><span class="label">Süre</span><input class="num" id="mtDur" value="3"><span class="label">sn</span></div>
             <div class="row" style="margin-top:7px"><button class="go" id="btnSeq" style="flex:1">Sırayla 1→8</button></div>
@@ -674,11 +770,11 @@ const testMode = {
         <div class="row" style="justify-content:center"><button class="go" id="doRun">▶ ÇALIŞTIR</button><button class="stop" id="doStop">■ DUR</button></div>
         <div class="status" id="doStatus">1500=dur · 1100 geri · 1900 ileri</div>
       </div></div>
-      <div class="card"><div class="hd">Mini ROV Motorları · Navigator (SimpleROV-4)</div><div class="body">
+      <div class="card"><div class="hd">Mini ROV Motorları · Navigator (SimpleROV-4)<button class="diagexp" onclick="openDiag('mrov')" title="Motor yerleşimini büyüt">⤢ büyüt</button></div><div class="body">
         <button id="nvLock" class="stop" style="width:100%;margin-bottom:6px">🔒 SU DIŞI — motor KİLİTLİ</button>
         <div id="nvLockWarn" style="display:none;font-size:11px;color:#ff9fb6;font-weight:700;margin-bottom:6px">⚠ MOTORLAR AKTİF — su dışındaysa DERHAL kilitle!</div>
         <div style="display:flex;gap:10px;align-items:center">
-          <div id="nvdiagram" style="flex:0 0 42%;max-width:150px"></div>
+          <div id="nvdiagram" style="flex:0 0 52%;max-width:185px;cursor:zoom-in" onclick="openDiag('mrov')" title="Büyütmek için tıkla"></div>
           <div style="flex:1;min-width:0">
             <div class="row"><span class="label">Gaz%</span><input class="num" id="nvThr" value="10"><span class="label">Süre</span><input class="num" id="nvDur" value="3"><span class="label">sn</span></div>
             <div class="row" style="margin-top:7px"><button class="stop" id="btnNavStop" style="flex:1">■ DURDUR</button></div>
@@ -892,6 +988,222 @@ document.querySelectorAll('#modenav a').forEach(a=> a.onclick=(e)=>{ e.preventDe
 window.addEventListener('popstate', ()=>{ switchMode(modeFromPath(), false); });
 window.addEventListener('resize', ()=>{ if(MODE==='kontrol') drawMap(); });
 function modeFromPath(){ const p=location.pathname; if(p.startsWith('/control'))return'kontrol'; if(p.startsWith('/test'))return'test'; return'operasyon'; }
+
+/* ===================== MANUEL SÜRÜŞ (USB gamepad) ===================== */
+// AUV: header'daki OTONOM/MANUEL switch (varsayılan OTONOM; MANUEL onay ister; SAYFA DEĞİŞMEZ,
+//   yalnız gamepad kontrolü aktifleşir). Mini ROV: "M.ROV Manuel" düğmesi → panel açar.
+// Aynı anda TEK araç manuel sürülür. GÜVENLİK: gamepad kopunca / sekme gizlenince / acil-durdurmada
+// NÖTR + OTONOM'a döner (dead-man). Backend handler YOK → iletim MANUAL_TX arkasında (stub).
+// Kontrat: AUV WS {cmd:'manual_control',x,y,z,r} (-1000..1000) + manual_stop; M.ROV POST /minirov/manual?x&y&z&r.
+const MANUAL_TX = new URLSearchParams(location.search).get('manualtx') === '1';
+const MAN_DEAD = 0.08, MAN_HZ = 20;
+const manual = { on:false, target:null, timer:null, mrovPanel:false, txWarned:false };
+const man1000 = v => Math.max(-1000, Math.min(1000, Math.round((v||0)*1000)));
+function manAxes(){
+  const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp=null; for(const g of gps){ if(g && g.connected){ gp=g; break; } }
+  if(!gp) return null;
+  const dz=v=> Math.abs(v)<MAN_DEAD ? 0 : v, ax=gp.axes||[];
+  // Standart gamepad: sol çubuk=ileri/yanal, sağ çubuk=dikey/yaw (operatör canlı barla doğrular).
+  return { name:gp.id||'gamepad', x:-dz(ax[1]||0), y:dz(ax[0]||0), z:-dz(ax[3]||0), r:dz(ax[2]||0) };
+}
+function manBars(a){   // Mini ROV panel eksen barları
+  const set=(id,val)=>{ const bar=$(id+'bar'), num=$(id+'num'); if(!bar||!num) return;
+    const fill=bar.firstElementChild, p=Math.max(-1,Math.min(1,val||0));
+    num.textContent=(val==null?'—':man1000(val));
+    if(fill){ if(p>=0){fill.style.left='50%';fill.style.width=(p*50)+'%';}
+      else {fill.style.left=(50+p*50)+'%';fill.style.width=(-p*50)+'%';}
+      fill.style.background=p>0?'var(--accent)':(p<0?'#f0426e':'transparent'); } };
+  if(a){ set('ax-x',a.x); set('ax-y',a.y); set('ax-z',a.z); set('ax-r',a.r); }
+  else ['ax-x','ax-y','ax-z','ax-r'].forEach(id=>set(id,null));
+}
+function manEmit(a){
+  if(!MANUAL_TX){ if(!manual.txWarned){ logEvent('Manuel: backend bağlı değil — komut GÖNDERİLMİYOR (stub). Canlı test: ?manualtx=1','warn'); manual.txWarned=true; } return; }
+  const x=man1000(a.x),y=man1000(a.y),z=man1000(a.z),r=man1000(a.r);
+  if(manual.target==='auv') wsSend({cmd:'manual_control',x,y,z,r});
+  else if(manual.target==='mrov') fetch('/minirov/manual?x='+x+'&y='+y+'&z='+z+'&r='+r,{method:'POST'}).catch(()=>{});
+}
+function manNeutral(t){ t=t||manual.target; if(!MANUAL_TX||!t) return;
+  if(t==='auv'){ wsSend({cmd:'manual_control',x:0,y:0,z:0,r:0}); wsSend({cmd:'manual_stop'}); }
+  else if(t==='mrov') fetch('/minirov/manual?x=0&y=0&z=0&r=0',{method:'POST'}).catch(()=>{});
+}
+function manLoop(){
+  const a=manAxes();
+  const hud=$('auvHud');
+  if(hud){ if(manual.on && manual.target==='auv'){ hud.style.display='inline-flex';
+      hud.innerHTML = a ? ('🎮 <b>'+man1000(a.x)+'</b>İ <b>'+man1000(a.y)+'</b>Y <b>'+man1000(a.z)+'</b>D <b>'+man1000(a.r)+'</b>Yw')
+                        : '🎮 gamepad YOK';
+      hud.style.color = a ? 'var(--accent)' : '#f0426e'; }
+    else hud.style.display='none'; }
+  if(manual.mrovPanel){ const st=$('man-gp');
+    if(st){ st.textContent = a?('Bağlı: '+a.name.slice(0,32)):'Gamepad YOK — USB joystick tak + tuşa bas'; st.className=a?'man-ok':'man-idle'; }
+    manBars(a); }
+  if(manual.on){ if(!a){ manStop('gamepad yok'); return; } manEmit(a); }
+}
+function manTimer(){ const need = manual.on || manual.mrovPanel;
+  if(need && !manual.timer) manual.timer=setInterval(manLoop, Math.round(1000/MAN_HZ));
+  else if(!need && manual.timer){ clearInterval(manual.timer); manual.timer=null; } }
+function manSync(){
+  const am=$('auvAuto'), an=$('auvMan'), auvOn=manual.on&&manual.target==='auv';
+  if(am) am.classList.toggle('on', !auvOn); if(an) an.classList.toggle('on', auvOn);
+  const eb=$('man-enable'), en=manual.on&&manual.target==='mrov';
+  if(eb){ eb.textContent=en?'⏹ Manuel DURDUR':'▶ Manuel ETKİNLEŞTİR'; eb.className=en?'stop':'go'; }
+  const ms=$('man-state'); if(ms){ ms.textContent=en?'● SÜRÜLÜYOR':'○ beklemede'; ms.className=en?'man-bad':'man-idle'; }
+  const mb=$('btnManMrov'); if(mb) mb.classList.toggle('on', manual.mrovPanel);
+  const hud=$('auvHud'); if(hud && !auvOn) hud.style.display='none';
+}
+function manStart(target){
+  if(manual.on && manual.target && manual.target!==target) manNeutral(manual.target);
+  manual.on=true; manual.target=target; manual.txWarned=false; manTimer(); manSync();
+  logEvent('Manuel ETKİN: '+(target==='auv'?'AUV':'Mini ROV')+(MANUAL_TX?'':' (stub — iletim kapalı)'),'warn');
+}
+function manStop(reason){
+  if(manual.on){ manNeutral(); logEvent('Manuel DURDU'+(reason?' ('+reason+')':''),'warn'); }
+  manual.on=false; manual.target=null; manTimer(); manSync();
+}
+function auvMode(mode){
+  if(mode==='manual'){
+    if(manual.on&&manual.target==='auv'){ manSync(); return; }
+    if(!manAxes()){ logEvent('! Gamepad yok — önce USB joystick tak, bir tuşa bas','warn'); manSync(); return; }
+    if(!confirm('AUV MANUEL sürüşe geçiliyor — gamepad kontrolü aktif olacak.\nGamepad nötr mü? Pervaneler güvende mi?')){ manSync(); return; }
+    manStart('auv');
+  } else { if(manual.on&&manual.target==='auv') manStop('otonoma dönüldü'); else manSync(); }
+}
+function mrovOpen(){ manual.mrovPanel=true; $('manpanel').classList.add('show'); manTimer(); manSync(); logEvent('Mini ROV manuel paneli açıldı'); }
+function mrovClose(){ if(manual.on&&manual.target==='mrov') manStop('panel kapandı'); manual.mrovPanel=false; $('manpanel').classList.remove('show'); manTimer(); manSync(); }
+function mrovToggle(){ if(manual.on&&manual.target==='mrov'){ manStop(); return; }
+  if(!manAxes()){ logEvent('! Gamepad yok — önce USB joystick tak, bir tuşa bas','warn'); return; }
+  if(!confirm('Mini ROV MANUEL sürüş ETKİNLEŞECEK — hareket edebilir.\nGamepad nötr mü? Pervaneler güvende mi?')) return;
+  manStart('mrov'); }
+function manDisableAll(){ if(manual.on) manStop('acil durdurma'); }
+window.addEventListener('gamepadconnected', e=> logEvent('🎮 Gamepad: '+(((e.gamepad&&e.gamepad.id)||'')).slice(0,32)));
+window.addEventListener('gamepaddisconnected', ()=>{ if(manual.on) manStop('gamepad koptu'); });
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden && manual.on) manStop('sekme gizlendi'); });
+$('auvAuto').onclick = ()=> auvMode('auto');
+$('auvMan').onclick  = ()=> auvMode('manual');
+$('btnManMrov').onclick = ()=> manual.mrovPanel ? mrovClose() : mrovOpen();
+$('man-close').onclick  = mrovClose;
+$('man-enable').onclick = mrovToggle;
+manSync();
+
+/* ===================== Motor diyagramı BÜYÜT (overlay) ===================== */
+// Test modundaki AUV/Mini ROV motor yerleşim SVG'sini büyük görünümde açar (salt-görsel).
+function openDiag(which){
+  const src = which==='auv' ? $('mtdiagram') : $('nvdiagram');
+  if(!src || !src.innerHTML.trim()){ return; }
+  $('diagbig-t').textContent = (which==='auv' ? 'AUV Motor Yerleşimi · V6X (Vectored-6DOF)' : 'Mini ROV Motor Yerleşimi · SimpleROV-4');
+  const holder=$('diagbig-svg'); holder.innerHTML = src.innerHTML;
+  holder.querySelectorAll('g[onclick]').forEach(g=>{ g.removeAttribute('onclick'); g.style.cursor='default'; });
+  $('diagbig-lg').innerHTML = which==='auv'
+    ? '<span><i style="background:#22d3ee"></i>Yatay iticiler (M1–4): sürüş/manevra — x-y düzlemi</span><span><i style="background:#f5a524"></i>Dikey iticiler (M5–8): derinlik — z ekseni</span>'
+    : '<span><i style="background:#22d3ee"></i>Mini ROV iticileri (M1–4)</span>';
+  $('diagbig').classList.add('show');
+}
+function closeDiag(){ $('diagbig').classList.remove('show'); }
+$('diagbig-x').onclick = closeDiag;
+
+/* ===================== SONAR HARİTALAMA — Ping eko-sounder (echogram) ===================== */
+// Tek-hüzme aşağı-bakan Ping (RNGFND1, CUAV'a bağlı). Veri /sensors'tan: altitude_m (dip mesafesi),
+// depth_m (Bar30 derinlik), sonar_valid. Echogram = zamanla kayan zemin izi (balık-bulucu).
+// Geçerli veri yoksa/bayatsa (≥3 sn) tam-panel "VERİ YOK / ÇEVRİMDIŞI". Backend değişikliği YOK.
+// Sonar MAPPING: aşağı-bakan tek-hüzme Ping + DR konumu -> üstten batimetrik harita.
+// Araç hareket ettikçe (GPS-fix origin geçerliyken) her geçerli dip, konuma göre derinlik-renkli
+// nokta olarak birikir. Canlı dip durumu (geçerli / menzil dışı / çevrimdışı) her zaman altta.
+let lastTel=null;          // son WS telemetri (DR konumu)
+const sonarMap=[];         // {x(east m), y(north m), d(zemin mutlak derinlik m)}
+let sonarLast=null;        // son ham okuma (durum yazisi)
+function pushSonar(d){
+  const raw=(d && d.altitude_m!=null)?d.altitude_m:null;
+  const valid=!!(d && d.sonar_valid && raw!=null);
+  const depth=(d && d.depth_valid && d.depth_m!=null)?d.depth_m:null;
+  sonarLast={ t:Date.now(), raw:raw, valid:valid, depth:depth };
+  const dr=lastTel && lastTel.dr;
+  if(valid && dr && dr.origin_valid && dr.x_east_m!=null){
+    const p={ x:dr.x_east_m, y:dr.y_north_m, d:(depth||0)+raw };
+    const L=sonarMap[sonarMap.length-1];
+    if(!L || Math.hypot(L.x-p.x, L.y-p.y)>0.15){ sonarMap.push(p); if(sonarMap.length>4000) sonarMap.shift(); }
+  }
+}
+function drawSonar(){
+  const c=$('sonarcanvas'); if(!c) return;
+  const rc=c.getBoundingClientRect(); c.width=Math.max(2,Math.round(rc.width)); c.height=Math.max(2,Math.round(rc.height));
+  const x=c.getContext('2d'), W=c.width, H=c.height, pad=18; x.clearRect(0,0,W,H);
+  x.strokeStyle='rgba(120,140,150,.10)'; x.lineWidth=1;
+  for(let gx=0;gx<=W;gx+=Math.max(24,W/8)){ x.beginPath(); x.moveTo(gx,0); x.lineTo(gx,H); x.stroke(); }
+  for(let gy=0;gy<=H;gy+=Math.max(24,H/6)){ x.beginPath(); x.moveTo(0,gy); x.lineTo(W,gy); x.stroke(); }
+  x.fillStyle='#6b7d86'; x.font='10px system-ui'; x.textAlign='left'; x.fillText('K↑ üstten zemin haritası', 6, 13);
+  const M=sonarMap, n=M.length, dr=lastTel && lastTel.dr;
+  if(n){
+    let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity,dmin=Infinity,dmax=-Infinity;
+    for(const p of M){ if(p.x<xmin)xmin=p.x; if(p.x>xmax)xmax=p.x; if(p.y<ymin)ymin=p.y; if(p.y>ymax)ymax=p.y; if(p.d<dmin)dmin=p.d; if(p.d>dmax)dmax=p.d; }
+    if(dr && dr.x_east_m!=null){ xmin=Math.min(xmin,dr.x_east_m); xmax=Math.max(xmax,dr.x_east_m); ymin=Math.min(ymin,dr.y_north_m); ymax=Math.max(ymax,dr.y_north_m); }
+    const sc=Math.min((W-2*pad)/Math.max(xmax-xmin,1),(H-2*pad)/Math.max(ymax-ymin,1)), cx=(xmin+xmax)/2, cy=(ymin+ymax)/2;
+    const PX=e=>W/2+(e-cx)*sc, PY=nn=>H/2-(nn-cy)*sc;
+    for(const p of M){ const t=(p.d-dmin)/((dmax-dmin)||1);
+      x.fillStyle='hsl('+Math.round(200-150*t)+',85%,'+Math.round(56-20*t)+'%)'; x.fillRect(PX(p.x)-1.5,PY(p.y)-1.5,3,3); }
+    if(dr && dr.x_east_m!=null){ x.fillStyle='#22d3ee'; x.beginPath(); x.arc(PX(dr.x_east_m),PY(dr.y_north_m),4,0,7); x.fill(); }
+    x.fillStyle='#6b7d86'; x.textAlign='right'; x.font='10px system-ui'; x.fillText('derinlik '+dmin.toFixed(1)+'–'+dmax.toFixed(1)+' m',W-4,14);
+  } else {
+    x.fillStyle='#8aa0aa'; x.textAlign='center'; x.font='12px system-ui'; x.fillText('Zemin haritası birikiyor…', W/2, H/2-4);
+    x.fillStyle='#6b7d86'; x.font='10px system-ui'; x.fillText('gerekli: GPS fix (origin) + geçerli dip — araç hareket ettikçe dolar', W/2, H/2+13);
+  }
+  const s=sonarLast, dead=!s||s.raw==null||(Date.now()-s.t)>3000;
+  x.textAlign='left'; x.font='bold 11px system-ui';
+  if(dead){ x.fillStyle='#ff9fb6'; x.fillText('⚠ sonar verisi yok / çevrimdışı', 6, H-6); }
+  else if(s.valid){ x.fillStyle='#34d399'; x.fillText('● dip '+s.raw.toFixed(2)+' m'+(s.depth!=null?' · zemin '+((s.depth||0)+s.raw).toFixed(2)+' m':''), 6, H-6); }
+  else { x.fillStyle='#f5a524'; x.fillText('📡 Ping canlı · dip menzil dışı ('+s.raw.toFixed(1)+' m)', 6, H-6); }
+}
+
+/* ===================== 3D SLAM NOKTA BULUTU (ZED /pointcloud) ===================== */
+// Kopru ZED PointCloud2'yi seyreltip /pointcloud'a sunar; burada dönen 3D projeksiyon çizeriz.
+let pclPts=[], pclMeta=null, pclAng=0, pclRaf=null, pclTimer=null, pclStamp=0, pclDrag=null, pclAuto=true;
+function fetchPcl(){
+  fetch('/pointcloud',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    pclPts=d.pts||[]; pclStamp=Date.now(); const e=$('pcl-n'); if(e) e.textContent=d.n||0;
+    const P=pclPts, n=P.length/3;
+    if(n){
+      let cx=0,cy=0,cz=0; for(let i=0;i<P.length;i+=3){ cx+=P[i]; cy+=P[i+1]; cz+=P[i+2]; } cx/=n; cy/=n; cz/=n;
+      let zmin=Infinity,zmax=-Infinity; const rad=[];
+      for(let i=0;i<P.length;i+=3){ const dx=P[i]-cx,dy=P[i+1]-cy,dz=P[i+2]-cz;
+        rad.push(Math.max(Math.abs(dx),Math.abs(dy),Math.abs(dz)));
+        if(P[i+2]<zmin)zmin=P[i+2]; if(P[i+2]>zmax)zmax=P[i+2]; }
+      rad.sort((a,b)=>a-b);
+      pclMeta={ cx:cx, cy:cy, cz:cz, r:Math.max(0.3, rad[Math.floor(rad.length*0.92)]||0.5), zmin:zmin, zmax:zmax };  // p92 = aykiri noktalari kirp
+    } else pclMeta=null;
+  }).catch(()=>{ const e=$('pcl-n'); if(e) e.textContent='—'; });
+}
+function drawPcl(){
+  const c=$('pclcanvas'); if(!c){ pclRaf=null; return; }
+  const rc=c.getBoundingClientRect(); c.width=Math.max(2,Math.round(rc.width)); c.height=Math.max(2,Math.round(rc.height));
+  const x=c.getContext('2d'), W=c.width, H=c.height; x.clearRect(0,0,W,H);
+  const P=pclPts, n=P.length/3, fresh=(Date.now()-pclStamp)<4000;
+  if(!n || !fresh || !pclMeta){ x.fillStyle='#6b7d86'; x.font='12px system-ui'; x.textAlign='center';
+    x.fillText(fresh?'nokta bulutu bekleniyor…':'⚠ nokta bulutu yok / çevrimdışı', W/2, H/2); if(pclAuto)pclAng+=0.003; return; }
+  const M=pclMeta, sc=(Math.min(W,H)*0.42)/M.r, ca=Math.cos(pclAng), sa=Math.sin(pclAng);
+  const EL=0.42, cel=Math.cos(EL), sel=Math.sin(EL);   // sabit ~24° eğim: derinlik (z) dikeyde de görünür (düz durmasın)
+  for(let i=0;i<P.length;i+=3){
+    const dx=P[i]-M.cx, dy=P[i+1]-M.cy, dz=P[i+2]-M.cz;
+    const x1=dx*ca - dz*sa, z1=dx*sa + dz*ca;   // yatayda azimut dönüşü
+    const px=W/2 + x1*sc, py=H/2 + (dy*cel - z1*sel)*sc;   // dikeyde y + eğimli z
+    if(px<-2||px>W+2||py<-2||py>H+2) continue;
+    const t=(P[i+2]-M.zmin)/((M.zmax-M.zmin)||1);
+    x.fillStyle='hsl('+Math.round(195-150*t)+',85%,'+Math.round(42+26*(1-t))+'%)';
+    x.fillRect(px,py,1.6,1.6);
+  }
+  x.fillStyle='#6b7d86'; x.font='10px system-ui'; x.textAlign='left'; x.fillText('sürükle=döndür · '+(n|0)+' nokta', 6, H-6);
+  if(pclAuto) pclAng+=0.0035;
+}
+function pclBindDrag(c){
+  if(c._dragBound) return; c._dragBound=true;
+  c.style.cursor='grab';
+  c.addEventListener('mousedown', e=>{ pclDrag=e.clientX; pclAuto=false; c.style.cursor='grabbing'; });
+  window.addEventListener('mousemove', e=>{ if(pclDrag!=null){ pclAng+=(e.clientX-pclDrag)*0.01; pclDrag=e.clientX; } });
+  window.addEventListener('mouseup', ()=>{ if(pclDrag!=null){ pclDrag=null; c.style.cursor='grab'; setTimeout(()=>{ pclAuto=true; },2500); } });
+}
+function pclStart(){ const c=$('pclcanvas'); if(c) pclBindDrag(c);
+  if(!pclTimer){ fetchPcl(); pclTimer=setInterval(fetchPcl,600); }
+  if(!pclRaf){ let last=0; const loop=(ts)=>{ if(!$('pclcanvas')){ pclRaf=null; return; } if(!last||(ts-last)>38){ last=ts||0; drawPcl(); } pclRaf=requestAnimationFrame(loop); }; pclRaf=requestAnimationFrame(loop); } }
+function pclStop(){ if(pclTimer){ clearInterval(pclTimer); pclTimer=null; } if(pclRaf){ cancelAnimationFrame(pclRaf); pclRaf=null; } }
 
 // ---- başlat ----
 switchMode(modeFromPath(), false);
