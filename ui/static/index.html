@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AUV Görev Kontrol</title>
+<link rel="stylesheet" href="/static/vendor/uplot.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>🌊 AUV Görev Kontrol</h1>
+      <div class="sub">Jetson Orin NX · ZED 2i · ROS 2 Humble</div>
+    </div>
+    <div class="zed-box">
+      <div class="row"><span class="dot" id="zed-dot"></span>
+        <span>ZED konteyneri: <b id="zed-status">?</b></span></div>
+      <button class="btn" id="zed-toggle" style="font-size:11px;padding:4px 10px">Başlat</button>
+    </div>
+    <nav id="nav"></nav>
+    <div class="foot">Kayıtlar: <code>~/auv/ui/recordings/</code></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/vendor/OrbitControls.js"></script>
+<script src="/static/vendor/uplot.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

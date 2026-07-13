@@ -4,3 +4,5 @@ ros2_ws/log/
 maps/*.ply
 maps/*.area
 docker/volumes/
+ui/recordings/
+**/__pycache__/

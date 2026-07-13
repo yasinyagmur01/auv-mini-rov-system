@@ -1,0 +1,18 @@
+# Gorev 2: Otonom Navigasyon, Intikal ve Kontrollu Alan Gecisi
+# ON KOSUL: Panelden ipucu koordinatlari girilmis olmali (set_targets).
+# Baslangic: arac yuzeyde, baslangic alaninda. Kablo sokulmeden ONCE
+# start_mission gonderilir; 10 sn geri sayimda kablo cikarilir/ayrilir.
+steps:
+  - {type: countdown, seconds: 10}
+  - {type: capture_origin}                 # yuzeyde GPS fix (medyan 20 ornek)
+  - {type: arm}
+  - {type: set_mode, mode: ALT_HOLD}
+  - {type: set_depth, depth_m: 1.5}        # AYAR: yarisma alani derinligine gore
+  - {type: goto_target, target: turn, arrive_radius_m: 5.0, speed_mps: 0.6,
+     timeout_s: 150}
+  - {type: orbit, radius_m: 12.0, speed_mps: 0.5}   # AYAR: R >= beklenen DR hatasi
+  - {type: goto_target, target: finish, arrive_radius_m: 4.0, speed_mps: 0.6,
+     timeout_s: 150}
+  - {type: wait, seconds: 2}
+  - {type: surface}                        # kare alanin icinde yuzeye cikis
+  - {type: disarm}

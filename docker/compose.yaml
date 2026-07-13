@@ -1,0 +1,45 @@
+# ============================================================================
+# AUV Docker mimarisi
+#
+# Her sensor/gorev grubu ayri bir servis olarak eklenecek (discrete yapi):
+#   zed        : ZED 2i kamera + VIO + derinlik + 3D harita   (bu dosyada)
+#   pixhawk    : CUAV V6X / MAVROS koprusu                    (sonraki asama)
+#   sonar      : Ping Sonar + Bar30                           (sonraki asama)
+#   navigation : Sensor fuzyonu + D* Lite rota planlayici     (sonraki asama)
+#
+# Kullanim (repo koku ~/auv):
+#   docker compose -f docker/compose.yaml build zed
+#   docker compose -f docker/compose.yaml up -d zed
+#   docker compose -f docker/compose.yaml logs -f zed
+# ============================================================================
+
+services:
+  zed:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.zed
+    image: auv/zed-ros2:humble-l4t-r36.5-sdk5.4.0
+    container_name: auv-zed
+    runtime: nvidia            # nvidia-container-toolkit gerektirir (scripts/install_host.sh)
+    privileged: true           # USB kamera + HID sensor erisimi (resmi Stereolabs onerisi)
+    network_mode: host         # DDS kesfi icin host agi (Fast DDS/CycloneDDS)
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=0
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb          # ZED 2i USB erisimi
+      - ../maps:/data/maps                 # .area (lokalizasyon) + .ply (3D harita) kalicilik
+      - zed_resources:/usr/local/zed/resources  # AI model onbellegi (ilk aciliste optimize edilir)
+      - zed_settings:/usr/local/zed/settings    # Kamera kalibrasyon dosyalari
+    command: ["ros2", "launch", "auv_bringup", "zed2i_auv.launch.py"]
+    # SIGINT: ros2 launch dugumleri duzgun kapatir -> kamera close() calisir ->
+    # save_area_memory_on_closing .area dosyasini yazar. SIGTERM bunu YAPMAZ
+    # (Humble launch cocuk dugumleri kapatmadan cikar). Area export uzun
+    # surebildigi icin genis sure taniyoruz.
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  zed_resources:
+  zed_settings:

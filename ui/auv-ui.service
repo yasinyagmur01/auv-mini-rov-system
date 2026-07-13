@@ -1,0 +1,13 @@
+[Unit]
+Description=AUV Gorev Kontrol Paneli (web UI, port 8080)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/qayra/auv/ui
+ExecStart=/usr/bin/python3 -m uvicorn server.main:app --host 0.0.0.0 --port 8080 --log-level warning
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

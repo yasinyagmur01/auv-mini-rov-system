@@ -1,0 +1,26 @@
+# 27 Temmuz video gorevi: Ileri Kategori otonom desen (sartname 2.4.3.3)
+# 1x1 m kare icinden baslar, tamamen su altinda, mudahalesiz.
+# Rota kapali kare: daire adimi 1.25 tur donerek (>= 1 tur kurali saglanir)
+# rotayi 90 derece saga kirar. Sureler 16 sn (kural: min 15 sn, pay birakildi).
+steps:
+  - {type: countdown, seconds: 10}      # baslat komutundan sonra el cekme suresi
+  - {type: arm}
+  - {type: set_mode, mode: ALT_HOLD}
+  - {type: set_depth, depth_m: 0.5}     # AYAR: havuz derinligine gore
+  # 1. bacak: daire kiris kaymasini telafi icin ~1.3 sn uzun (aciklama altta)
+  - {type: drive, seconds: 17.5, speed: 0.4}
+  - {type: turn, delta_deg: 90}
+  - {type: drive, seconds: 16, speed: 0.4}
+  # daire capi = ileri hiz / donus hizi orani: v/omega >= 0.5 m olmali.
+  # forward 0.20 (~0.15 m/s) + yaw_rate 0.25 (15 derece/s) -> cap ~1.15 m.
+  # 450 derecelik donusun cikisi giristen capraz ~0.7 m kayar; bu kayma
+  # 1. ve 4. bacaklarin uzatilmasiyla telafi edilir (kural: bacak >= 15 sn,
+  # uzatmak serbest). HAVUZDA OLCUN: gercek hiz/cap ile sureleri ayarlayin!
+  - {type: spin, turns: 1.25, yaw_rate: 0.25, forward: 0.20}
+  - {type: drive, seconds: 16, speed: 0.4}
+  - {type: turn, delta_deg: 90}
+  # 4. bacak: telafi icin uzun
+  - {type: drive, seconds: 17.5, speed: 0.4}
+  - {type: wait, seconds: 2}
+  - {type: surface}
+  - {type: disarm}

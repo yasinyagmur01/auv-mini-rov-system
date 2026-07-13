@@ -1,0 +1,88 @@
+# ============================================================================
+# AUV - ZED 2i + ROS 2 Humble imaji (Jetson Orin NX, L4T r36.5 / JetPack 6.2.x)
+#
+# Taban imaj: stereolabs/zed:5.4.0-devel-l4t-r36.5 (RESMI Stereolabs imaji)
+#  - Host L4T (r36.5.0) ile BIREBIR eslesir (Stereolabs sarti: host L4T = konteyner L4T)
+#  - ZED SDK 5.4.0 + CUDA 12.6 + TensorRT 10.3 icerir (hosttaki SDK ile ayni surum)
+#  - Dogrulama: https://hub.docker.com/r/stereolabs/zed/tags (5.4.0-devel-l4t-r36.5)
+#
+# Uzerine apt'ten ROS 2 Humble (Ubuntu 22.04 arm64 binari) ve wrapper
+# bagimliliklari kurulur; zed-ros2-wrapper v5.4.0 + auv_bringup derlenir.
+#
+# Derleme (context repo koku ~/auv olmalidir):
+#   docker compose -f docker/compose.yaml build zed
+# ============================================================================
+
+ARG IMAGE_NAME=stereolabs/zed:5.4.0-devel-l4t-r36.5
+
+FROM ${IMAGE_NAME}
+
+ARG ROS2_DIST=humble
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Istanbul
+ENV ROS_DISTRO=${ROS2_DIST}
+
+# --- ROS 2 Humble apt deposu -------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl gnupg2 lsb-release ca-certificates && \
+    curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/ros2.list && \
+    rm -rf /var/lib/apt/lists/*
+
+# --- ROS 2 Humble + wrapper bagimliliklari (tumu resmi Humble binarileri) -----
+# zed_components/package.xml (v5.4.0) bagimlilik listesinden dogrulandi;
+# zed_msgs artik apt'ten gelir (ros-humble-zed-msgs, README notu).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential cmake git python3-colcon-common-extensions python3-pip \
+      nlohmann-json3-dev usbutils \
+      ros-${ROS2_DIST}-ros-base \
+      ros-${ROS2_DIST}-zed-msgs \
+      ros-${ROS2_DIST}-zed-description \
+      ros-${ROS2_DIST}-xacro \
+      ros-${ROS2_DIST}-robot-state-publisher \
+      ros-${ROS2_DIST}-diagnostic-updater \
+      ros-${ROS2_DIST}-robot-localization \
+      ros-${ROS2_DIST}-nmea-msgs \
+      ros-${ROS2_DIST}-geographic-msgs \
+      ros-${ROS2_DIST}-angles \
+      ros-${ROS2_DIST}-backward-ros \
+      ros-${ROS2_DIST}-image-transport \
+      ros-${ROS2_DIST}-image-transport-plugins \
+      ros-${ROS2_DIST}-point-cloud-transport \
+      ros-${ROS2_DIST}-point-cloud-transport-plugins \
+      python3-numpy && \
+    rm -rf /var/lib/apt/lists/*
+
+# --- Calisma alani -------------------------------------------------------------
+# Katman sirasi bilincli: once yavas degisen wrapper (C++ derlemesi ~dakikalar),
+# sonra sik degisen auv_bringup (launch/config, ~saniyeler). Boylece bir YAML
+# degisikligi yalnizca son katmani gecersiz kilar.
+WORKDIR /root/ros2_ws/src
+COPY ros2_ws/src/zed-ros2-wrapper ./zed-ros2-wrapper
+
+# zed_debug dahili gelistirme paketidir (resmi README: atlanabilir)
+WORKDIR /root/ros2_ws
+RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && \
+  colcon build --symlink-install \
+    --parallel-workers $(nproc) \
+    --packages-skip zed_debug \
+    --cmake-args ' -DCMAKE_BUILD_TYPE=Release' ' --no-warn-unused-cli'"
+
+COPY ros2_ws/src/auv_bringup ./src/auv_bringup
+RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && \
+  colcon build --symlink-install \
+    --packages-select auv_bringup \
+    --cmake-args ' -DCMAKE_BUILD_TYPE=Release' ' --no-warn-unused-cli'"
+
+# Harita/area dosyalari icin baglama noktasi (compose: ../maps -> /data/maps)
+RUN mkdir -p /data/maps
+
+COPY docker/ros_entrypoint.sh /sbin/ros_entrypoint.sh
+RUN chmod 755 /sbin/ros_entrypoint.sh
+
+ENTRYPOINT ["/sbin/ros_entrypoint.sh"]
+CMD ["bash"]

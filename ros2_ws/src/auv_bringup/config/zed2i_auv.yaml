@@ -1,0 +1,58 @@
+# ============================================================================
+# AUV - ZED 2i konfigurasyonu (zed-ros2-wrapper v5.4.0 / ZED SDK 5.4)
+#
+# zed_camera.launch.py'ye `ros_params_override_path` ile verilir. SADECE
+# resmi varsayilanlardan (common_stereo.yaml + zed2i.yaml) SAPAN degerler
+# tutulur — varsayilani tekrarlamak, wrapper guncellemelerinde gercek
+# farklari gizler.
+#
+# DIKKAT — su anahtarlar launch argumanlariyla YONETILIR, buraya YAZILMAZ
+# (zed_camera.launch.py launch-arg sozlugu YAML'i ezer):
+#   pos_tracking.area_file_path      -> zed2i_auv.launch.py 'maps_dir' argumani
+#   gnss_fusion.gnss_fusion_enabled  -> 'enable_gnss' argumani (F9P gelince true)
+#   pos_tracking.publish_tf/publish_map_tf -> 'publish_tf'/'publish_map_tf' argumanlari
+#
+# Varsayilanda kalan bilincli tercihler (buraya yazilmadi):
+#   depth_mode: NEURAL_LIGHT (varsayilan; guc butcesi izin verirse NEURAL denenecek)
+#   pos_tracking_mode: AUTO (= GEN_3: loop closure + relocalization destekli VSLAM)
+#   mapping.resolution: 0.05 m, max_mapping_range: 5.0 m (varsayilanlar su alti
+#   gorus mesafesiyle zaten uyumlu)
+# ============================================================================
+---
+/**:
+    ros__parameters:
+        general:
+            grab_frame_rate: 30        # varsayilan 60; su altinda dusuk isikta pozlama + islem yuku dengesi
+
+        video:
+            publish_left_right: true   # UI'da sol/sag goz secimi icin (stereo analiz)
+
+        depth:
+            min_depth: 0.3             # varsayilan 0.01; muhafaza cami yakin-alan yansimalarini ele
+            max_depth: 8.0             # varsayilan 15.0; su altinda uzak-alan gurultusunu kes
+            publish_depth_info: true   # derinlik istatistikleri (Sonar/Bar30 karsilastirmasi)
+            publish_depth_confidence: true  # piksel bazli hata payi haritasi (~/confidence/confidence_map)
+
+        sensors:
+            publish_imu_raw: true      # CUAV IMU fuzyonu icin ham IMU
+            publish_mag: true
+            publish_baro: true         # muhafaza ici basinc takibi
+            publish_temp: true         # kamera sicaklik takibi
+            publish_cam_imu_transf: true
+
+        pos_tracking:
+            # pos_tracking_mode, area_file_path ve save_area_memory_on_closing
+            # launch'tan yonetilir (tracking_mode:=GEN_1|GEN_3):
+            #   GEN_1 (varsayilan) -> 3D haritalama; area dosyasi KULLANILMAZ
+            #     (GEN_1'de area yuklemek SEARCHING kilitlenmesi yaratir, mapping 0 kalir)
+            #   GEN_3 -> area memory relocalization; kapanista .area kaydedilir
+            publish_pose_cov: true     # kovaryans: EKF fuzyonunda agirlik
+            publish_cam_path: true     # gidilen rota (suruklenme analizi)
+
+        gnss_fusion:
+            gnss_fix_topic: '/gps/fix' # F9P surucusunun yayinlayacagi NavSatFix topic'i
+
+        mapping:
+            mapping_enabled: true      # 3D fused point cloud haritasi ("3D piksel")
+            max_mapping_range: 8.0     # varsayilan 5.0; depth.max_depth (8m) ile esitlendi —
+                                       # her bakis ~2.5x daha fazla alan tarar (kapsama hizi)

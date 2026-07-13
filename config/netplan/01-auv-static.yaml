@@ -1,0 +1,10 @@
+# Jetson statik IP (kopyala: /etc/netplan/01-auv-static.yaml ; sudo netplan apply)
+# Arayuz adini `ip link` ile dogrulayin (eth0 varsayildi).
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: false
+      addresses: [192.168.2.3/24]
+      # internet gerekliyse (kurulum asamasi) gateway'li ikinci profil kullanin

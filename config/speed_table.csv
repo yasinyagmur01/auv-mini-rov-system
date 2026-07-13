@@ -1,0 +1,11 @@
+throttle,speed_mps
+0,0.0
+200,0.15
+300,0.25
+400,0.38
+500,0.50
+600,0.62
+700,0.75
+# UYARI: Bu degerler KABA TAHMINDIR. Havuzda scripts/calibrate_speed.py
+# prosedurunu uygulayip gercek olcumlerle degistirin. Govde/pervane degisiminde
+# ve yarisma yerinde (deniz) tekrar olculmelidir.
