@@ -1,0 +1,6 @@
+# CUAV V6X USB baglantisina sabit isim: /dev/ttyFC
+# Kurulum: sudo cp 99-auv-serial.rules /etc/udev/rules.d/ && sudo udevadm control --reload
+# idVendor/idProduct'i dogrulayin: `lsusb` (CUAV/ArduPilot genellikle 1209:5740
+# veya 2dae:xxxx). Gerekirse asagidaki degerleri guncelleyin.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="5740", SYMLINK+="ttyFC"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2dae", SYMLINK+="ttyFC"

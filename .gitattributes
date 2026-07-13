@@ -1,0 +1,16 @@
+# Tüm metin dosyaları depoda LF; çalışma ağacında da LF (Linux hedef: Jetson).
+# Windows'tan düzenleme/scp CRLF sokup sahte git "M" farkları üretiyordu — bu onu bitirir.
+* text=auto eol=lf
+
+# İkili dosyalar (normalize edilmez)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.bundle binary
+*.dtb  binary
+*.pt   binary
+*.pyc  binary
+*.bak  binary

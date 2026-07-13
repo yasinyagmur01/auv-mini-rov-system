@@ -1,0 +1,28 @@
+# AUV çekirdek yığını — açılışta otomatik başlatma (reboot'ta 'nohup' kaybını çözer).
+# Başlatır: MAVLink router + mav_bridge + mission_node + web köprüsü.
+# 'webpanel-ros2.service'in yerini alır (onu disable et).
+#
+# Kurulum (Jetson, kullanıcı qayra — kartlara bağlı PC'den deploy sonrası):
+#   sudo systemctl disable --now webpanel-ros2 2>/dev/null
+#   cp scripts/auv_stack_start.sh /home/qayra/ && chmod +x /home/qayra/auv_stack_start.sh
+#   sudo cp scripts/auv-stack.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now auv-stack
+#   systemctl status auv-stack     # kontrol
+#
+# NOT: TASLAK — Jetson'da test edilip yollar doğrulanmalı. mav_router.py ve
+# webpanel/ros2_web_bridge.py /home/qayra altında olmalı.
+[Unit]
+Description=AUV core stack (mavlink router + mav_bridge + mission + web panel :8000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=qayra
+Environment=HOME=/home/qayra
+ExecStart=/bin/bash -lc '/home/qayra/auv_stack_start.sh'
+ExecStop=/bin/bash -lc 'pkill -f mav_router.py; pkill -f auv_mav_bridge; pkill -f auv_mission; pkill -f ros2_web_bridge.py'
+
+[Install]
+WantedBy=multi-user.target

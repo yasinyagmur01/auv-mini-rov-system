@@ -1,0 +1,17 @@
+# Mini ROV (RPi4 + Navigator, BlueOS/ArduSub) taban parametreleri
+# BlueOS arayuzunden veya QGC'den yuklenir.
+
+SYSID_THISMAV,2
+FRAME_CONFIG,5          # SimpleROV-4: 2 ileri yatay (diferansiyel yaw) + 2 dikey
+                        # MOTORLARI BU GEOMETRIYE GORE MONTE EDIN (henuz takilmadi)
+
+FS_PILOT_INPUT,1
+FS_PILOT_TIMEOUT,3.0
+FS_GCS_ENABLE,0         # sinyal ana arac uzerinden; kisa kopmalarda disarm olmasin
+ARMING_CHECK,1
+
+# Mini ROV'a Bar30 eklenirse (ONERILIR - boru icinde derinlik tutma):
+# Navigator I2C portuna baglanir, otomatik algilanir; ALT_HOLD kullanilabilir.
+
+# Kamera: BlueOS Video Streams sayfasindan USB kamera -> UDP 5600 (QGC otomatik)
+# Panel ikinci akis isterse ayni sayfadan 5602'ye kopya akis tanimlanir.

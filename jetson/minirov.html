@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MiniROV-Web WebRTC</title>
+<link rel="stylesheet" href="/panel.css">
+<style>
+  /* Tam-viewport koyu tema; video tum alani kaplar, object-fit: contain.
+     Not: bu sayfa canli kamera izleyicisidir; panel.css yalniz HUD renk
+     token'lari icin baglanir, video/HUD yerlesimi burada kendine yeter. */
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #video {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;         /* en-boy orani korunur, kirpma yok */
+    background: #000;
+    display: block;
+  }
+  /* Sol ust kosedeki kucuk durum paneli (HUD) */
+  #hud {
+    position: fixed; top: 10px; left: 12px;
+    z-index: 10;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #d6e9f5;
+    background: rgba(8, 13, 20, 0.6);
+    padding: 8px 11px;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    user-select: none;
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+    max-width: 70vw;
+  }
+  #hud .row { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  #hud .row + .row { margin-top: 3px; }
+  #dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #5b6b7d; flex: 0 0 auto;
+    box-shadow: 0 0 6px currentColor;
+    color: #5b6b7d;
+  }
+  #dot.connecting { background: #f5a524; color: #f5a524; animation: pulse 1s infinite; }
+  #dot.playing    { background: #34d399; color: #34d399; }
+  #dot.error      { background: #f0426e; color: #f0426e; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #status { font-weight: 600; }
+  #meta { color: #8397ab; }
+  #fps b { color: #fff; }
+  /* Sag ust: panele donus bagi (iframe icinde degil, tam ekranda gorunur) */
+  #back {
+    position: fixed; top: 10px; right: 12px; z-index: 10;
+    font: 600 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #d6e9f5; text-decoration: none;
+    background: rgba(8, 13, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(6px);
+    padding: 8px 12px; border-radius: 9px;
+    transition: background .15s;
+  }
+  #back:hover { background: rgba(34, 211, 238, 0.2); color: #fff; }
+</style>
+</head>
+<body>
+  <!-- Tek video elemani: sessiz, satir-ici, otomatik oynat -->
+  <video id="video" autoplay muted playsinline></video>
+
+  <div id="hud">
+    <div class="row"><span id="dot"></span><span id="status">Baslatiliyor...</span></div>
+    <div class="row" id="meta"></div>
+    <div class="row" id="fps">FPS: <b>--</b></div>
+  </div>
+
+  <!-- Operasyona donus (yalniz tam-ekran sayfada; iframe icinde gizlenir) -->
+  <a id="back" href="/">‹ Operasyon</a>
+  <script>if (window.top !== window.self) document.getElementById('back').style.display = 'none';</script>
+
+<script>
+"use strict";
+/* ============================================================================
+ * mavlink-camera-manager v0.2.4 — standalone WebRTC izleyici (consumer)
+ *
+ * Protokol, bu surumun GERCEK tarayici istemcisinin (bundle) birebir kopyasi:
+ *   - Signalling: HAM WebSocket, ws://<host>:<port>  (PATH YOK)
+ *   - Iki katmanli zarf: {type, content} icinde {type, content}
+ *   - Dis type: "question" | "answer" | "negotiation"
+ *   - El sikisma: peerId -> availableStreams -> startSession -> (SDP/ICE)
+ *   - SDP yonu: PRODUCER (sunucu) OFFER uretir; istemci ANSWER verir.
+ *     (Istemci createOffer YAPMAZ; sadece createAnswer.)
+ *   - Bind alanlari snake_case: consumer_id / producer_id / session_id
+ *   - PeerConnection: bundlePolicy "max-bundle", iceServers [] (LAN, STUN yok),
+ *     recvonly video transceiver, addTrack yok.
+ * ==========================================================================*/
+
+/* ---- Yapilandirma ---------------------------------------------------------
+ * Host: ?host= parametresi, yoksa 192.168.2.2 (BlueOS RPi4, kamera .2'de).
+ * Port: ?port= parametresi, yoksa 6021 (MCM signalling varsayilani; bundle
+ *       ref degeri de 6021'dir). Not: bazi deploy'larda signalling farkli
+ *       portta olabilir; baglanamazsan adres cubuguna ?port=6020 (veya baska)
+ *       ekleyerek dene. 6020 tipik olarak HTTP/REST API portudur.
+ * -------------------------------------------------------------------------*/
+const params = new URLSearchParams(location.search);
+const HOST = params.get("host") || "192.168.2.2";
+const PORT = params.get("port") || "6021";
+const WS_URL = `ws://${HOST}:${PORT}`;          // path YOK, sadece kok
+
+// Otomatik secilecek producer (MiniROV-Web / /dev/video2 H264 / 1280x720@30)
+const TARGET_ID   = "f0098545-3af2-40c1-a84b-13d9d58bfd94";
+const TARGET_NAME = "MiniROV-Web";
+
+const RECONNECT_MS   = 2000;   // kopunca 2 sn'de bir yeniden baglan
+const STREAM_POLL_MS = 1000;   // yayin listesi her 1 sn'de bir sorulur
+
+/* ---- DOM ----------------------------------------------------------------*/
+const videoEl  = document.getElementById("video");
+const dotEl    = document.getElementById("dot");
+const statusEl = document.getElementById("status");
+const metaEl   = document.getElementById("meta");
+const fpsEl    = document.querySelector("#fps b");
+
+/* ---- Oturum durumu (her baglantida sifirlanir) --------------------------*/
+let ws = null;                 // WebSocket
+let pc = null;                 // RTCPeerConnection
+let consumerId  = null;        // peerId (bizim id'miz)
+let producerId  = null;        // secilen Stream.id
+let sessionId   = null;        // startSession cevabindaki session_id
+let streamPoll  = null;        // availableStreams poll interval
+let reconnectTimer = null;
+let sessionRequested = false;  // startSession'i iki kez gondermemek icin
+let closed = false;            // bilincli teardown mi?
+
+/* ---- HUD yardimcilari ---------------------------------------------------*/
+function setStatus(state, text) {
+  dotEl.className = state;               // connecting | playing | error
+  statusEl.textContent = text;
+}
+
+/* ---- Mesaj gonderme -----------------------------------------------------*/
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+/* ==========================================================================
+ * BAGLANTI
+ * ========================================================================*/
+function connect() {
+  clearTimeout(reconnectTimer);
+  teardownPeer();
+  // Durum sifirla
+  consumerId = producerId = sessionId = null;
+  sessionRequested = false;
+  closed = false;
+
+  setStatus("connecting", "Baglaniyor: " + WS_URL);
+  metaEl.textContent = "";
+
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) {
+    setStatus("error", "WS hatasi: " + e.message);
+    scheduleReconnect();
+    return;
+  }
+
+  // 1) Baglanti acilinca kendi consumer id'mizi (peerId) SOR
+  ws.onopen = () => {
+    setStatus("connecting", "Baglandi, peerId isteniyor...");
+    send({ type: "question", content: { type: "peerId" } });
+  };
+
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    handleMessage(msg);
+  };
+
+  ws.onerror = () => {
+    // onerror'i genelde onclose izler; yeniden baglanmayi orada yapiyoruz.
+    setStatus("error", "WebSocket hatasi");
+  };
+
+  ws.onclose = () => {
+    if (!closed) setStatus("error", "Baglanti koptu");
+    scheduleReconnect();
+  };
+}
+
+function scheduleReconnect() {
+  stopStreamPoll();
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, RECONNECT_MS);
+}
+
+/* ==========================================================================
+ * GELEN MESAJ ISLEME
+ * ========================================================================*/
+async function handleMessage(msg) {
+  // --- answer (soru cevaplari) -------------------------------------------
+  if (msg.type === "answer") {
+    const a = msg.content;                     // { type, content }
+
+    if (a.type === "peerId") {
+      // 2) Kendi id'miz geldi -> yayin listesini iste (ve 1 sn'de bir poll et)
+      consumerId = a.content.id;
+      setStatus("connecting", "Yayin araniyor...");
+      requestStreams();
+      startStreamPoll();
+
+    } else if (a.type === "availableStreams") {
+      // 3) Yayin listesi -> hedef producer'i sec
+      const streams = Array.isArray(a.content) ? a.content : [];
+      if (sessionRequested) return;            // zaten oturum baslatildi
+      const stream = pickStream(streams);
+      if (!stream) {
+        setStatus("connecting", "Yayin bekleniyor (" + streams.length + " kaynak)...");
+        return;                                // poll devam eder
+      }
+      // 4) Oturum baslat
+      producerId = stream.id;
+      sessionRequested = true;
+      stopStreamPoll();
+      metaEl.textContent = (stream.name || "?") + " · " +
+                           (stream.width || "?") + "x" + (stream.height || "?") +
+                           (stream.encode ? " · " + stream.encode : "");
+      setStatus("connecting", "Oturum baslatiliyor...");
+      send({ type: "question", content: { type: "startSession",
+             content: { consumer_id: consumerId, producer_id: producerId } } });
+
+    } else if (a.type === "startSession") {
+      // 5) session_id geldi -> PeerConnection kur; producer artik OFFER gonderir
+      sessionId = a.content.session_id;
+      setStatus("connecting", "Video muzakeresi...");
+      createPeer();
+    }
+    return;
+  }
+
+  // --- negotiation (SDP / ICE) -------------------------------------------
+  if (msg.type === "negotiation") {
+    const n = msg.content;                     // { type, content }
+    const b = n.content;                       // { consumer_id, producer_id, session_id, sdp|ice }
+    // Uclu kimlik eslesmiyorsa yok say
+    if (sessionId && b.session_id && b.session_id !== sessionId) return;
+
+    if (n.type === "mediaNegotiation") {
+      // 6) Gelen OFFER -> setRemoteDescription -> createAnswer -> ANSWER gonder
+      if (!pc || !b.sdp || b.sdp.type !== "offer") return;
+      try {
+        await pc.setRemoteDescription(b.sdp);            // { type:"offer", sdp }
+        await pc.setLocalDescription(await pc.createAnswer());
+        send({ type: "negotiation", content: { type: "mediaNegotiation",
+               content: { consumer_id: consumerId, producer_id: producerId,
+                          session_id: sessionId,
+                          sdp: pc.localDescription.toJSON() } } }); // { type:"answer", sdp }
+      } catch (e) {
+        setStatus("error", "SDP hatasi: " + e.message);
+      }
+
+    } else if (n.type === "iceNegotiation") {
+      // 7) Uzak ICE adayi -> addIceCandidate (RTCIceCandidateInit)
+      if (!pc || !b.ice) return;
+      try { await pc.addIceCandidate(b.ice); }
+      catch (e) { /* gec/gecersiz aday olabilir, yut */ }
+    }
+    return;
+  }
+
+  // --- question (sunucudan gelen soru; ozellikle endSession) --------------
+  if (msg.type === "question") {
+    const q = msg.content;
+    if (q.type === "endSession") {
+      const reason = (q.content && q.content.reason) || "";
+      setStatus("error", "Oturum kapandi" + (reason ? ": " + reason : ""));
+      // Tekrar bastan baglan
+      closed = true;
+      try { ws.close(); } catch {}
+    }
+  }
+}
+
+/* ---- Producer secimi: id -> isim -> tek producer ------------------------*/
+function pickStream(streams) {
+  if (!streams.length) return null;
+  return streams.find(s => s.id === TARGET_ID)      // 1) kesin id
+      || streams.find(s => s.name === TARGET_NAME)  // 2) isim
+      || (streams.length === 1 ? streams[0] : null);// 3) tek kaynak varsa o
+}
+
+/* ---- Yayin listesi sorgu / poll ----------------------------------------*/
+function requestStreams() {
+  send({ type: "question", content: { type: "availableStreams" } });
+}
+function startStreamPoll() {
+  stopStreamPoll();
+  streamPoll = setInterval(() => {
+    if (!sessionRequested) requestStreams();
+  }, STREAM_POLL_MS);
+}
+function stopStreamPoll() {
+  if (streamPoll) { clearInterval(streamPoll); streamPoll = null; }
+}
+
+/* ==========================================================================
+ * RTCPeerConnection (saf tuketici / answerer)
+ * ========================================================================*/
+function createPeer() {
+  teardownPeer();
+
+  pc = new RTCPeerConnection({
+    bundlePolicy: "max-bundle",
+    iceServers: []                    // LAN; STUN/TURN yok (bundle varsayilani)
+  });
+
+  // Sadece ALICI video hatti; giden medya yok (addTrack yok).
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  // Yerel ICE adaylari -> trickle ile gonder
+  pc.onicecandidate = (ev) => {
+    if (!ev.candidate) return;        // null = gathering bitti
+    send({ type: "negotiation", content: { type: "iceNegotiation",
+           content: { consumer_id: consumerId, producer_id: producerId,
+                      session_id: sessionId,
+                      ice: ev.candidate.toJSON() } } });
+  };
+
+  // Gelen medya -> video'ya bagla + dusuk gecikme ayarlari
+  pc.ontrack = (ev) => {
+    if (videoEl.srcObject !== ev.streams[0]) {
+      videoEl.srcObject = ev.streams[0];
+    }
+    // Manuel surus dengesi: kucuk jitter buffer -> fps SABIT, ~0.1 sn gecikme
+    // (jitterBufferTarget ms; playoutDelayHint s). 0 yaparsan en dusuk gecikme
+    // ama fps dalgalanir. ?lowlatency=1 ile sifira cekilebilir.
+    const lowLat = new URLSearchParams(location.search).get('lowlatency') === '1';
+    try { if ("jitterBufferTarget" in ev.receiver) ev.receiver.jitterBufferTarget = lowLat ? 0 : 100; } catch {}
+    try { if ("playoutDelayHint"  in ev.receiver) ev.receiver.playoutDelayHint  = lowLat ? 0 : 0.1; } catch {}
+    try { if (ev.track) ev.track.contentHint = "motion"; } catch {}   // akiciligi/gecikmeyi oncele
+    videoEl.play().catch(() => {});
+    startFpsMeter();
+  };
+
+  // Baglanti durumu -> HUD + kopmada yeniden baglan
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    if (st === "connected") {
+      setStatus("playing", "Oynatiliyor");
+    } else if (st === "connecting") {
+      setStatus("connecting", "Baglaniyor (ICE)...");
+    } else if (st === "failed" || st === "disconnected" || st === "closed") {
+      if (!closed) {
+        setStatus("error", "WebRTC: " + st);
+        closed = true;
+        try { ws.close(); } catch {}   // onclose -> yeniden baglan
+      }
+    }
+  };
+}
+
+function teardownPeer() {
+  if (pc) {
+    try { pc.ontrack = pc.onicecandidate = pc.onconnectionstatechange = null; } catch {}
+    try { pc.close(); } catch {}
+    pc = null;
+  }
+  stopFpsMeter();
+  if (videoEl.srcObject) { videoEl.srcObject = null; }
+}
+
+/* ==========================================================================
+ * GERCEK FPS OLCER
+ *   Tercih: requestVideoFrameCallback (sunulan kare sayisi = gercek fps).
+ *   Yedek : getStats -> inbound-rtp framesPerSecond / framesDecoded farki.
+ * ========================================================================*/
+let rvfcHandle = null, fpsInterval = null;
+let frameCount = 0, lastDecoded = null, lastStatsTs = null;
+let lastLatencyMs = null;   // kokpit overlay icin (getStats)
+
+function startFpsMeter() {
+  stopFpsMeter();
+  if (typeof videoEl.requestVideoFrameCallback === "function") {
+    const onFrame = () => {
+      frameCount++;
+      rvfcHandle = videoEl.requestVideoFrameCallback(onFrame);
+    };
+    rvfcHandle = videoEl.requestVideoFrameCallback(onFrame);
+    fpsInterval = setInterval(() => {
+      updateFps(frameCount);
+      frameCount = 0;
+    }, 1000);
+  } else {
+    // Yedek yol: getStats
+    fpsInterval = setInterval(pollStatsFps, 1000);
+  }
+}
+
+function stopFpsMeter() {
+  if (fpsInterval) { clearInterval(fpsInterval); fpsInterval = null; }
+  if (rvfcHandle && typeof videoEl.cancelVideoFrameCallback === "function") {
+    try { videoEl.cancelVideoFrameCallback(rvfcHandle); } catch {}
+  }
+  rvfcHandle = null; frameCount = 0; lastDecoded = null; lastStatsTs = null;
+  fpsEl.textContent = "--";
+}
+
+async function pollStatsFps() {
+  if (!pc) return;
+  try {
+    const stats = await pc.getStats();
+    stats.forEach((r) => {
+      if (r.type === "inbound-rtp" && r.kind === "video") {
+        if (typeof r.framesPerSecond === "number") {
+          updateFps(Math.round(r.framesPerSecond));
+        } else if (typeof r.framesDecoded === "number") {
+          if (lastDecoded != null && lastStatsTs != null) {
+            const dt = (r.timestamp - lastStatsTs) / 1000;
+            if (dt > 0) updateFps(Math.round((r.framesDecoded - lastDecoded) / dt));
+          }
+          lastDecoded = r.framesDecoded;
+          lastStatsTs = r.timestamp;
+        }
+      }
+    });
+  } catch {}
+}
+
+function updateFps(fps) {
+  const w = videoEl.videoWidth, h = videoEl.videoHeight;
+  fpsEl.textContent = (isFinite(fps) ? fps : "--") + (w && h ? "  ·  " + w + "x" + h : "");
+  // Kokpit kabugu iframe olarak gomuyorsa istatistikleri parent'a bildir
+  // (WebRTC protokolune DOKUNMAZ; yalniz salt-okunur olcum gonderir).
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "minirov-stats",
+        fps: (isFinite(fps) ? fps : null), w: w || null, h: h || null,
+        latency: lastLatencyMs }, "*");
+    }
+  } catch (e) {}
+}
+
+/* ---- Gecikme olcer (getStats; overlay icin) -----------------------------*/
+async function pollLatency() {
+  if (!pc) return;
+  try {
+    const stats = await pc.getStats();
+    let rtt = null, jbDelay = null, jbEmitted = null;
+    stats.forEach((r) => {
+      if (r.type === "candidate-pair" && typeof r.currentRoundTripTime === "number") rtt = r.currentRoundTripTime;
+      if (r.type === "inbound-rtp" && r.kind === "video") {
+        if (typeof r.jitterBufferDelay === "number") jbDelay = r.jitterBufferDelay;
+        if (typeof r.jitterBufferEmittedCount === "number") jbEmitted = r.jitterBufferEmittedCount;
+      }
+    });
+    if (jbDelay != null && jbEmitted) lastLatencyMs = Math.round((jbDelay / jbEmitted) * 1000);
+    else if (rtt != null) lastLatencyMs = Math.round(rtt * 1000);
+  } catch (e) {}
+}
+setInterval(pollLatency, 1000);
+
+/* ---- Baslat -------------------------------------------------------------*/
+connect();
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ Onemli: IDLE/MANUAL durumlarinda bu node MANUAL_CONTROL YAYINLAMAZ;
 QGC joystick dogrudan ucus kontrole gider. Gorev basladiginda pilot eli
 cekilir; STOP ile her an geri alinabilir.
 """
+import math
 import os
 import time
 
@@ -22,6 +23,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from std_msgs.msg import Float32, Bool, String, Float32MultiArray, UInt16MultiArray
 from std_srvs.srv import Trigger
+from sensor_msgs.msg import BatteryState
 from geometry_msgs.msg import Twist
 
 from auv_msgs.msg import (ManualControl, MissionState, VerticalState,
@@ -37,6 +39,21 @@ except ImportError:  # bagimsiz test icin yedek
         def __init__(self, *_): ...
         def speed(self, t): return abs(t) / 1000.0
         def throttle_for(self, v): return min(1000.0, abs(v) * 1000.0)
+
+
+def _safe_num(x, nd=2):
+    """JSON'a giden sayilari guvenlestir: None/NaN/Inf -> None.
+    NaN, json.dumps ile gecersiz 'NaN' uretir -> tarayicida JSON.parse patlar ->
+    TUM panel akisi kirilir. Batarya current/percentage FC yoksa NaN gelir."""
+    if x is None:
+        return None
+    try:
+        f = float(x)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return round(f, nd)
 
 
 STATE_NAMES = {
@@ -159,6 +176,13 @@ class MissionNode(Node):
         self.create_subscription(String, '/mav/mode', self._s_mode, 10)
         self.create_subscription(UInt16MultiArray, '/mav/servo_out', self._s_servo, qos)
         self._servo = []   # son 8 motor PWM (motor gorsellestirmesi icin)
+        # --- P0 guvenlik telemetrisi (additive) ---
+        self.create_subscription(BatteryState, '/mav/battery', self._s_batt, qos)
+        self.create_subscription(String, '/mav/statustext', self._s_stext, 10)
+        self.create_subscription(Bool, '/mav/leak', self._s_leak, 10)
+        self._batt = None          # son BatteryState
+        self._statustext = ''      # son FC STATUSTEXT
+        self._leak = None          # sizinti: None=bilinmiyor, True=ALARM (bridge yalniz True yayinlar)
 
         self.cli_capture = self.create_client(Trigger, '/dr/capture_origin')
 
@@ -188,6 +212,9 @@ class MissionNode(Node):
     def _s_lane_cmd(self, m): self.ctx.lane_cmd = m
     def _s_lane_st(self, m):  self.ctx.lane_status = m.status
     def _s_servo(self, m):    self._servo = [int(v) for v in m.data]
+    def _s_batt(self, m):     self._batt = m
+    def _s_stext(self, m):    self._statustext = m.data
+    def _s_leak(self, m):     self._leak = bool(m.data)
 
     def _s_vert(self, m):
         self.ctx.depth_m = m.depth_m
@@ -444,6 +471,14 @@ class MissionNode(Node):
                 },
                 'lane_status': self.ctx.lane_status,
                 'motors': self._servo,
+                # --- P0 guvenlik telemetrisi (additive; her float NaN->None) ---
+                'battery': None if self._batt is None else {
+                    'voltage': _safe_num(self._batt.voltage, 2),
+                    'current': _safe_num(self._batt.current, 1),   # FC yoksa NaN -> None
+                    'percentage': _safe_num(self._batt.percentage, 3),  # 0..1, NaN -> None
+                },
+                'statustext': self._statustext or None,
+                'leak': self._leak,   # None=bilinmiyor / True=ALARM
             },
         })
 
