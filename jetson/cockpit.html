@@ -54,6 +54,14 @@
     border-radius:9px;padding:6px 10px;opacity:0;transition:opacity .12s;pointer-events:none;font-variant-numeric:tabular-nums}
   .center:hover .camov,.camov.show{opacity:1}
   .camov b{color:var(--accent)}
+  /* kamera arıza katmanı: siyah ekran yerine NEDEN görünmediğini söyler */
+  .camwarn{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px;
+    background:rgba(5,8,10,.82);backdrop-filter:blur(2px)}
+  .camwarn.show{display:flex}
+  .camwarn .cw-ico{font-size:40px;opacity:.7}
+  .camwarn .cw-t{font-size:15px;font-weight:800;color:var(--warn)}
+  .camwarn .cw-s{font-size:12px;color:var(--muted);max-width:420px;line-height:1.5}
 
   /* ---- kamera seçici şerit ---- */
   .strip .tile{flex:1;position:relative;border:1px solid var(--border);border-radius:10px;
@@ -166,6 +174,8 @@
   .commsbar{flex:0 0 auto;display:none;background:var(--danger);color:#fff;font-weight:800;
     font-size:13px;letter-spacing:.3px;text-align:center;padding:8px 14px}
   .commsbar.show{display:block;animation:leakpulse 1s infinite}
+  /* sıcaklık aşımında header çipi yanıp söner (dikkat çekici) */
+  .leakpulse-chip{animation:leakpulse 1s infinite}
   /* GPS büyük harita — orta-üstten açılır, ekran ortasına kadar */
   #gpsbig{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:60;
     width:min(62vw,760px);height:52vh;display:none;flex-direction:column;
@@ -264,6 +274,7 @@
 
 <div class="linkbar" id="linkbar">⚠ VERİ GÜNCEL DEĞİL — sensör akışı/bağlantı kesildi</div>
 <div class="commsbar" id="commsbar"></div>
+<div class="commsbar" id="overtempbar"></div>
 
 <main id="main">
   <div class="gutter gl" id="gutterL" title="Sürükle: sol paneli yeniden boyutlandır"></div>
@@ -276,6 +287,7 @@
     <div class="media" id="cam-map"><canvas id="map"></canvas><div class="maphint" id="mapHint">GPS fix alınınca harita aktifleşir.</div></div>
     <span class="camtag" id="camtag"><span class="dot ok"></span>—</span>
     <div class="camov" id="camov">—</div>
+    <div class="camwarn" id="camwarn"><div class="cw-ico">📷</div><div class="cw-t" id="camwarn-t">Kamera görüntüsü yok</div><div class="cw-s" id="camwarn-s"></div></div>
   </section>
 
   <div class="strip" id="strip">
@@ -349,6 +361,11 @@ let MODE = 'operasyon';
 let selCam = 'zed';       // operasyon/test: büyük merkez kamera
 let pipCam = null;        // kontrol: PiP kamerası (null=kapalı)
 let sensors = null, prevLeak = undefined, prevMLeak = undefined, prevArmed = undefined, wasStale = false;
+// Sıcaklık aşım eşiği (°C). CUAV ADC iç/kart sıcaklığı + Mini ROV sıcaklığı bunu
+// aşınca uyarı. ?tempwarn=NN ile geçici değiştirilebilir (varsayılan 90).
+const TEMP_WARN_C = (()=>{ const q=parseFloat(new URLSearchParams(location.search).get('tempwarn'));
+  return isFinite(q) ? q : 90; })();
+let prevOverTemp = undefined, prevOverMTemp = undefined;   // kenar-tetikli uyarı için
 let miniStats = {fps:null, w:null, h:null, latency:null};
 let gpsTrack = [];   // GPS harita izi {lat,lon}
 let zedTrack = [];   // ZED VO izi {x,y}
@@ -393,10 +410,23 @@ $('btnStopMrov').onclick = ()=>{
 
 // --- header göstergeleri + popover ---
 function watt(d){ return (d.voltage!=null && d.current_a!=null) ? Math.round(d.voltage*d.current_a) : null; }
-function leakChip(id, v){ const e=$(id); if(!e) return;
-  if(v==null){ e.textContent='sızd —'; e.className='pill hs'; }
-  else if(v===true){ e.textContent='⚠ SIZINTI'; e.className='pill hs bad'; }
-  else { e.textContent='sızd kuru'; e.className='pill hs ok'; } }
+// Sızdırmazlık: ArduSub SÜREKLİ "kuru" sinyali VERMEZ — yalnız sızıntı anında
+// "Leak Detected" mesajı yollar (olay-tabanlı, mandallı). Bu yüzden:
+//   leak===true  -> ⚠ SIZINTI (kırmızı, mandallı)
+//   leak==null + bağlantı VAR -> "izleniyor" (sensör aktif, sızıntı bildirimi yok)
+//   leak==null + bağlantı YOK -> "—" (bilinmiyor; veri gelmiyor)
+// Kasıtlı olarak "kuru/güvenli" pozitif iddiasında BULUNMUYORUZ (yanlış güven vermemek için).
+function leakChip(id, v, linkOk){ const e=$(id); if(!e) return;
+  if(v===true){ e.textContent='⚠ SIZINTI'; e.className='pill hs bad'; }
+  else if(linkOk){ e.textContent='sızd: izleniyor'; e.className='pill hs ok'; }
+  else { e.textContent='sızd —'; e.className='pill hs'; } }
+// Sıcaklık çipi: eşik aşılınca kırmızı+yanıp söner, yaklaşınca (eşiğin 10°C altı) sarı.
+function tempChip(id, v){ const e=$(id); if(!e) return false;
+  if(v==null){ e.textContent='—°C'; e.className='pill hs'; return false; }
+  e.textContent = v.toFixed(1)+'°C';
+  if(v>=TEMP_WARN_C){ e.className='pill hs bad leakpulse-chip'; return true; }
+  if(v>=TEMP_WARN_C-10){ e.className='pill hs warn'; return false; }
+  e.className='pill hs'; return false; }
 function renderHeader(d){
   $('d-ros').className = 'dot ' + ((d && (d.connected || d.depth_m!=null))?'ok':'bad');
   $('hs-mode').textContent = 'mod: ' + (d.mode||'—');
@@ -409,13 +439,32 @@ function renderHeader(d){
   $('hs-p').textContent = (d.battery_pct!=null?d.battery_pct:'—') + ' %';
   const pct=d.battery_pct;
   $('hs-p').className = 'pill hs' + (pct!=null&&pct<20?' bad':(pct!=null&&pct<40?' warn':''));
-  leakChip('hs-leak', d.leak);
-  $('hs-temp').textContent = (d.water_temp_c!=null? d.water_temp_c.toFixed(1):'—') + '°C';
+  const auvLink = (d.link_ok!=null ? d.link_ok===true : (d.connected || d.depth_m!=null));
+  leakChip('hs-leak', d.leak, auvLink);
+  // AUV sıcaklık çipi = CUAV ADC iç/kart sıcaklığı (Bar30 su sıcaklığı popover'da).
+  tempChip('hs-temp', d.board_temp_c);
   // Mini ROV (per-araç)
   $('d-mrov').className = 'dot ' + (d.mrov_link===true?'ok':(d.mrov_link===false?'bad':''));
   $('hs-mrov').className = 'pill hs' + (d.mrov_link===true?' ok':(d.mrov_link===false?' bad':''));
-  leakChip('hs-mleak', d.mrov_leak);
-  $('hs-mtemp').textContent = (d.mrov_temp_c!=null? d.mrov_temp_c.toFixed(1):'—') + '°C';
+  leakChip('hs-mleak', d.mrov_leak, d.mrov_link===true);
+  tempChip('hs-mtemp', d.mrov_temp_c);
+}
+// Sıcaklık aşım bannerı + kenar-tetikli olay günlüğü (hem AUV hem Mini ROV).
+function evalTemp(d){
+  const at = d.board_temp_c, mt = d.mrov_temp_c;
+  const overA = (at!=null && at>=TEMP_WARN_C);
+  const overM = (mt!=null && mt>=TEMP_WARN_C);
+  const al=[];
+  if(overA) al.push('🌡 AUV SICAKLIK YÜKSEK: '+at.toFixed(1)+'°C (≥'+TEMP_WARN_C+')');
+  if(overM) al.push('🌡 MİNİ ROV SICAKLIK YÜKSEK: '+mt.toFixed(1)+'°C (≥'+TEMP_WARN_C+')');
+  const bar=$('overtempbar');
+  if(al.length){ bar.textContent=al.join('    ·    '); bar.classList.add('show'); }
+  else bar.classList.remove('show');
+  if(prevOverTemp!==undefined && prevOverTemp!==overA)
+    logEvent(overA?('⚠ AUV SICAKLIK 90°C AŞTI: '+at.toFixed(1)+'°C'):'AUV sıcaklık normale döndü', overA?'alarm':'');
+  if(prevOverMTemp!==undefined && prevOverMTemp!==overM)
+    logEvent(overM?('⚠ Mini ROV SICAKLIK 90°C AŞTI: '+mt.toFixed(1)+'°C'):'Mini ROV sıcaklık normale döndü', overM?'alarm':'');
+  prevOverTemp=overA; prevOverMTemp=overM;
 }
 // haberleşme izleme + acil notlar
 let commsPrev = { auv:undefined, mrov:undefined };
@@ -445,11 +494,20 @@ function popContent(id, d){
     <div class="kv"><span>Boylam</span><b>${d.gps_lon??'—'}</b></div>
     <canvas class="gpsmap" id="gpsmap" width="256" height="150"></canvas>
     <div style="font-size:10px;color:var(--faint);margin-top:3px">Yerel iz (harita karosu yok — Jetson internetsiz)</div>`;
-  if(id==='hs-leak') return `<h4>Sızdırmazlık</h4>
-    <div class="kv"><span>Durum</span><b>${d.leak==null?'bilinmiyor':(d.leak?'⚠ SIZINTI':'kuru')}</b></div>
-    <div class="kv"><span>FC mesajı</span><b>${d.statustext||'—'}</b></div>`;
-  if(id==='hs-temp') return `<h4>Su Sıcaklığı</h4>
-    <div class="kv"><span>Sıcaklık</span><b>${d.water_temp_c!=null?d.water_temp_c.toFixed(1)+' °C':'bilinmiyor'}</b></div>`;
+  if(id==='hs-leak' || id==='hs-mleak'){ const lk=(id==='hs-leak')?d.leak:d.mrov_leak;
+    const ln=(id==='hs-leak')?(d.link_ok!=null?d.link_ok===true:(d.connected||d.depth_m!=null)):(d.mrov_link===true);
+    return `<h4>Sızdırmazlık${id==='hs-mleak'?' · Mini ROV':''}</h4>
+    <div class="kv"><span>Durum</span><b>${lk===true?'⚠ SIZINTI':(ln?'izleniyor':'bilinmiyor')}</b></div>
+    ${id==='hs-leak'?`<div class="kv"><span>FC mesajı</span><b>${d.statustext||'—'}</b></div>`:''}
+    <div style="font-size:10px;color:var(--faint);margin-top:5px;line-height:1.4">ArduSub yalnız sızıntı anında "Leak Detected" yollar; "izleniyor" = bağlantı var, sızıntı bildirimi yok (kuru garantisi değil).</div>`; }
+  if(id==='hs-temp') return `<h4>AUV Sıcaklık</h4>
+    <div class="kv"><span>İç/kart (ADC)</span><b>${d.board_temp_c!=null?d.board_temp_c.toFixed(1)+' °C':'bilinmiyor'}</b></div>
+    <div class="kv"><span>Su (Bar30)</span><b>${d.water_temp_c!=null?d.water_temp_c.toFixed(1)+' °C':'bilinmiyor'}</b></div>
+    <div class="kv"><span>Uyarı eşiği</span><b>${TEMP_WARN_C} °C</b></div>
+    <div style="font-size:10px;color:var(--faint);margin-top:5px;line-height:1.4">Header çipi CUAV ADC iç/kart sıcaklığını gösterir. Boşsa FC'de TEMP1 (analog) yapılandırılmamış olabilir.</div>`;
+  if(id==='hs-mtemp') return `<h4>Mini ROV Sıcaklık</h4>
+    <div class="kv"><span>Sıcaklık</span><b>${d.mrov_temp_c!=null?d.mrov_temp_c.toFixed(1)+' °C':'bilinmiyor'}</b></div>
+    <div class="kv"><span>Uyarı eşiği</span><b>${TEMP_WARN_C} °C</b></div>`;
   if(id==='hs-mode') return `<h4>Uçuş Modu</h4>
     <div class="kv"><span>Mod</span><b>${d.mode||'—'}</b></div>
     <div class="kv"><span>ARM</span><b>${d.armed==null?'—':(d.armed?'ARMED':'DISARMED')}</b></div>`;
@@ -576,6 +634,7 @@ function applyView(){
     tag.innerHTML = '<span class="dot ok"></span>' + (selCam==='zed'?'AUV · ZED 2i':'Mini ROV · WebRTC');
   }
   updateOverlay();
+  updateCamWarn(sensors);
   // şerit aktif işaretle
   document.querySelectorAll('.strip .tile').forEach(t=>t.classList.toggle('active',
     MODE==='kontrol' ? t.dataset.cam===pipCam : t.dataset.cam===selCam));
@@ -590,6 +649,21 @@ function updateOverlay(){
     const im=$('cam-zed');
     ov.innerHTML = `ZED 2i<br>çöz: <b>${im.naturalWidth?im.naturalWidth+'×'+im.naturalHeight:'—'}</b><br>FPS/gecikme: <b>—</b> <span style="color:var(--faint)">(MJPEG)</span>`;
   }
+}
+// Kamera arıza görünürlüğü: ZED siyah ekran verdiğinde NEDENİNİ göster.
+// (Köprü kare yoksa sessizce siyah placeholder yayınlıyor -> operatör sebebi göremez.)
+// Mini ROV için iframe kendi HUD'unda (Bağlanıyor/Hata) durum gösterdiğinden burada kaplamayız.
+function updateCamWarn(d){
+  const el=$('camwarn'); if(!el) return;
+  const cam = (MODE==='kontrol') ? null : selCam;   // kontrol modunda merkez = harita
+  if(cam!=='zed'){ el.classList.remove('show'); return; }
+  const st = (d && d.cameras && d.cameras.zed) || '';
+  if(/canli|demo|mock/i.test(st)){ el.classList.remove('show'); return; }
+  $('camwarn-t').textContent = 'ZED 2i görüntüsü yok';
+  $('camwarn-s').innerHTML = 'Köprüye ZED karesi ulaşmıyor (durum: <b>'+(st||'veri yok')+'</b>).<br>'
+    + 'Kontrol et: ZED ROS2 düğümü çalışıyor mu · <code>/zed/zed_node/rgb/color/rect/image/compressed</code> '
+    + 'topic\'i yayında mı · konteyner→host DDS (compressed) geçişi var mı?';
+  el.classList.add('show');
 }
 // şerit tıklama
 document.querySelectorAll('.strip .tile').forEach(t => t.onclick = ()=>{
@@ -616,6 +690,8 @@ async function poll(){
       if(!g||Math.abs(g.lat-d.gps_lat)>1e-7||Math.abs(g.lon-d.gps_lon)>1e-7){ gpsTrack.push({lat:d.gps_lat,lon:d.gps_lon}); if(gpsTrack.length>300)gpsTrack.shift(); } }
     renderHeader(d);
     evalComms(d, true);
+    evalTemp(d);
+    updateCamWarn(d);
     if(popAnchor){ $('popover').innerHTML = popContent(popAnchor.id, d); }   // açık popover'ı tazele
     if(gpsBigOpen) drawGpsMapOn($('gpsbigmap'), d);
     drawZedTrack(d);

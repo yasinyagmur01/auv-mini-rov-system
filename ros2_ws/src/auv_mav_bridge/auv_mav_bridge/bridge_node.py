@@ -118,8 +118,15 @@ class MavBridge(Node):
         self.pub_leak = self.create_publisher(Bool, '/mav/leak', 10)
         # 8 motor PWM (us) - motor yerlesim/itki gorsellestirmesi icin
         self.pub_servo = self.create_publisher(UInt16MultiArray, '/mav/servo_out', qos)
-        # Su/kart sicakligi (Bar30, SCALED_PRESSURE2.temperature) - kokpit header gostergesi
+        # Su sicakligi (Bar30, SCALED_PRESSURE2.temperature) - kokpit header gostergesi
         self.pub_water_temp = self.create_publisher(Float32, '/mav/water_temp', qos)
+        # Kart/ic sicaklik: CUAV V6X ADC portundaki ANALOG sicaklik sensoru (Bar30'dan
+        # AYRI). ArduSub'da TEMP1_TYPE=5 (Analog) + TEMP1_PIN=<adc> ile okunur; MAVLink'e
+        # cikmasi icin TEMP1_SRC ayarlanmalidir. Yaygin rota SCALED_PRESSURE3.temperature.
+        # ARAÇTA DOĞRULA: sensoru isit, hangi mesaj/alanin degistigini
+        # `mavproxy`/`pymavlink` ile teyit et; kaynak farkliysa depth_source gibi bir
+        # 'board_temp_source' parametresiyle degistirilebilir (su an SCALED_PRESSURE3).
+        self.pub_board_temp = self.create_publisher(Float32, '/mav/board_temp', qos)
         # AUV FC link durumu: HEARTBEAT tazeligi (dolayli 'connected' yerine net kopma sinyali)
         self.pub_link = self.create_publisher(Bool, '/mav/link_ok', 10)
 
@@ -419,6 +426,7 @@ class MavBridge(Node):
             'ATTITUDE': self.h_attitude,
             'VFR_HUD': self.h_vfr_hud,
             'SCALED_PRESSURE2': self.h_pressure2,
+            'SCALED_PRESSURE3': self.h_pressure3,
             'DISTANCE_SENSOR': self.h_distance,
             'GPS_RAW_INT': self.h_gps,
             'SYS_STATUS': self.h_sys_status,
@@ -502,6 +510,18 @@ class MavBridge(Node):
         dp_pa = (m.press_abs - p0) * 100.0
         depth = max(0.0, dp_pa / (self.rho * 9.80665))
         self.pub_depth.publish(Float32(data=depth))
+
+    def h_pressure3(self, m):
+        # CUAV V6X ADC analog sicaklik sensoru (TEMP1_SRC -> SCALED_PRESSURE3 rotasi).
+        # temperature santi-C; kart/ic sicaklik -> /mav/board_temp -> kokpit 90C uyarisi.
+        # NOT: press_abs bu sensor icin anlamsiz olabilir; yalniz temperature kullanilir.
+        try:
+            t = float(m.temperature) / 100.0
+            # 0 santi-C tipik "veri yok" degeri; anlamsiz 0.0'i yayma.
+            if m.temperature != 0:
+                self.pub_board_temp.publish(Float32(data=t))
+        except Exception:
+            pass
 
     def h_distance(self, m):
         r = Range()

@@ -78,6 +78,8 @@ def mock_sensors():
         'gps_lon': round(29.4501 + 0.0001 * math.cos(t / 20), 7),
         'gps_fix': 3, 'gps_sats': 11, 'gps_hdop': 0.8,
         'water_temp_c': round(19 + 0.5 * math.sin(t / 30), 1),
+        # CUAV ADC ic/kart sicakligi (MOCK): ucgen dalga 35<->100 -> 90C uyarisi test
+        'board_temp_c': round(35.0 + 65.0 * (1 - abs((t % 80) - 40) / 40.0), 1),
         'link_ok': True,
         'mrov_link': True, 'mrov_leak': None, 'mrov_temp_c': 20.1,
         'mrov_voltage': 15.5, 'mrov_current_a': 3.2, 'mrov_battery_pct': 78, 'mrov_armed': False,

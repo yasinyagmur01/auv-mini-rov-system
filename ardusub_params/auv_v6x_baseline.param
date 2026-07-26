@@ -41,6 +41,34 @@ FS_BATT_ENABLE,2        # dusuk bataryada yuzeye
 FS_LEAK_ENABLE,2        # sizinti sensoru takilirsa: yuzeye
 ARMING_CHECK,1
 
+# --- Sizinti (Leak) sensoru — AUX1 sinyal, CUAV V6X ---
+# ONEMLI: FS_LEAK_ENABLE=2 tek basina YETMEZ; sensorun OKUNDUGU pin tanimlanmali.
+# Tanimli degilse ArduSub hic "Leak Detected" yollamaz -> kokpitte sizdirmazlik
+# hep "izleniyor/—" kalir (fiili tespit olmaz). ArduSub yalniz sizinti ANINDA
+# STATUSTEXT ("Leak Detected") yollar; surekli "kuru" sinyali YOKTUR.
+# Asagidakileri ARAÇTA (QGC) DOGRULAYIP acin:
+# LEAK1_PIN,<aux1_gpio_no>   # AUX1'in GPIO pin no'su. QGC > Parameters > LEAK1_PIN
+#                            # aciklamasindaki pin listesinden CUAV V6X/AUX1 degerini al.
+#                            # AUX1'i cikis yerine GPIO yapmak icin ilgili SERVOx_FUNCTION=0
+#                            # (Disabled) gerekebilir (araca gore dogrula).
+# LEAK1_LOGIC,0              # Kuru durumdaki mantik seviyesi. Blue Robotics SOS leak:
+#                            # tipik kuru=LOW -> 0. Sensorun islakta verdigi seviyeyi dogrula.
+# KABUL TESTI (tezgah): leak probunu isla -> QGC'de "Leak Detected" gorulmeli VE
+# kokpit header "⚠ SIZINTI" (mandalli) yanmalidir.
+
+# --- Ic/kart sicaklik sensoru — ADC analog, CUAV V6X ---
+# Bar30 SU sicakligindan (SCALED_PRESSURE2) AYRI, ADC portundaki analog sensor.
+# Kokpit header AUV sicaklik cipini + 90C asim uyarisini besler (/mav/board_temp).
+# Asagidakileri ARAÇTA (QGC) DOGRULAYIP acin:
+# TEMP1_TYPE,5               # Analog
+# TEMP1_PIN,<adc_pin_no>     # CUAV V6X ADC pin no'su. QGC > TEMP1_PIN aciklamasi pin listesi verir.
+# TEMP1_A0 .. TEMP1_A4       # Sensor datasheet'ine gore volt->°C polinom katsayilari
+#                            # (deg = a0 + a1*V + a2*V^2 + a3*V^3 + a4*V^4).
+# TEMP1_SRC,<kaynak>         # Okumanin MAVLink'e cikmasi icin GEREKLI (varsayilan sadece loglar).
+#                            # Kopru SCALED_PRESSURE3.temperature rotasini okur. Sensoru isit,
+#                            # QGC MAVLink Inspector'da HANGI mesaj/alanin degistigini DOGRULA;
+#                            # SCALED_PRESSURE3 degilse bridge_node.py h_pressure3'u o mesaja gore guncelle.
+
 # --- Pusula / EKF notlari ---
 COMPASS_AUTODEC,1
 # CompassMot (motor girisim kalibrasyonu) havuz varilinde QGC'den yapilacak.

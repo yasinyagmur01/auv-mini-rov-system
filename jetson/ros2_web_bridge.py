@@ -62,6 +62,7 @@ LINK_OK_TOPIC = '/mav/link_ok'        # std_msgs/Bool (AUV FC heartbeat tazeligi
 GPS_TOPIC = '/mav/gps'                # sensor_msgs/NavSatFix (lat/lon)
 GPSINFO_TOPIC = '/mav/gps_info'       # auv_msgs/GpsInfo (fix_type, satellites, hdop)
 WATERTEMP_TOPIC = '/mav/water_temp'   # std_msgs/Float32 (Bar30 su sicakligi, C)
+BOARDTEMP_TOPIC = '/mav/board_temp'   # std_msgs/Float32 (CUAV ADC analog ic/kart sicakligi, C)
 # ZED VO/odometri topic'i. VARSAYILAN BOŞ = kapalı (demo sentetik zed_pose kalir).
 # ARAÇTA: `ros2 topic list | grep zed` ile gercek odom topic'ini bul (nav_msgs/Odometry;
 # tipik: /zed/zed_node/odom) ve buraya yaz -> gercek VO izi /sensors.zed_pose'a akar.
@@ -123,6 +124,9 @@ def _blank_sensors():
             # AUV (V6X) tarafi
             'gps_lat': None, 'gps_lon': None, 'gps_fix': None,
             'gps_sats': None, 'gps_hdop': None, 'water_temp_c': None,
+            # CUAV ADC analog ic/kart sicakligi (Bar30 su sicakligindan AYRI).
+            # 90C asim uyarisi bu deger uzerinden calisir. None = sensor/kaynak yok.
+            'board_temp_c': None,
             'link_ok': None,   # AUV FC HEARTBEAT tazeligi (net kopma sinyali)
             # Mini ROV (BlueOS/Navigator, mavlink2rest) — per-arac ayri gostergeler
             'mrov_link': None, 'mrov_leak': None, 'mrov_temp_c': None,
@@ -190,6 +194,7 @@ def build_ros_node():
             self.create_subscription(NavSatFix, GPS_TOPIC, self._gps_cb, sqos)
             self.create_subscription(GpsInfo, GPSINFO_TOPIC, self._gpsinfo_cb, sqos)
             self.create_subscription(Float32, WATERTEMP_TOPIC, self._wtemp_cb, sqos)
+            self.create_subscription(Float32, BOARDTEMP_TOPIC, self._btemp_cb, sqos)
             self.create_subscription(Bool, LINK_OK_TOPIC, self._link_cb, sqos)
             # ZED VO/odometri (opsiyonel; ZED_ODOM_TOPIC set edilirse gercek pose izi)
             if ZED_ODOM_TOPIC:
@@ -301,6 +306,11 @@ def build_ros_node():
 
         def _wtemp_cb(self, m):
             self.sensors['water_temp_c'] = round(float(m.data), 1)
+            self.sensor_stamp = time.time()
+
+        def _btemp_cb(self, m):
+            # CUAV ADC analog ic/kart sicakligi (90C asim uyarisi bu degerden)
+            self.sensors['board_temp_c'] = round(float(m.data), 1)
             self.sensor_stamp = time.time()
 
         def _link_cb(self, m):
@@ -437,8 +447,20 @@ def build_ros_node():
                     if st:
                         txt = st.get('text', '')
                         if isinstance(txt, list):
-                            txt = ''.join(chr(x) for x in txt if isinstance(x, int) and x).strip()
-                        low = str(txt).lower()
+                            # mavlink2rest surumune gore text ya int listesi ya da tek-karakter
+                            # STRING listesi ("L","e","a","k",...) olabilir. ESKI KOD yalniz int
+                            # bekliyordu; string gelince hepsini eliyor -> metin bos -> "Leak
+                            # Detected" olsa bile mrov_leak hep null kaliyordu (ARAÇTA GORULEN BUG).
+                            # Ikisini de destekle:
+                            chars = []
+                            for x in txt:
+                                if isinstance(x, int):
+                                    if x: chars.append(chr(x))
+                                elif isinstance(x, str):
+                                    chars.append(x)
+                            txt = ''.join(chars)
+                        txt = str(txt).replace('\x00', '').strip()
+                        low = txt.lower()
                         if 'leak' in low or 'flood' in low:
                             s['mrov_leak'] = True   # mandalli: bir kez True -> True kalir
                 except Exception:
@@ -512,6 +534,11 @@ class DemoSource:
                 gps_fix=3, gps_sats=int(10 + 2 * abs(math.sin(t / 9))),
                 gps_hdop=round(0.8 + 0.3 * abs(math.sin(t / 7)), 2),
                 water_temp_c=round(18.0 + 0.6 * math.sin(t / 30), 1),
+                # CUAV ADC ic/kart sicakligi (DEMO): 90C esik uyarisini GORSEL
+                # dogrulamak icin kasitli ucgen dalga 35<->100 (~80 sn periyot);
+                # ~90C'yi periyodik asar -> kokpit uyarisi/bannerı/olay gunlugu test edilir.
+                # GERCEKTE: /mav/board_temp topic'inden gelir (SCALED_PRESSURE3).
+                board_temp_c=round(35.0 + 65.0 * (1 - abs((t % 80) - 40) / 40.0), 1),
                 # Mini ROV (sentetik; gercekte mavlink2rest'ten gelir)
                 mrov_link=True, mrov_leak=None,
                 mrov_temp_c=round(19.0 + 0.4 * math.sin(t / 25), 1),

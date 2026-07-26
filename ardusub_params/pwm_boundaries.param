@@ -1,0 +1,36 @@
+# AUV motor PWM sinir degerleri — CUAV V6X, ArduSub, Vectored_6DOF (8 motor)
+# Konvansiyon: 1100 geri · 1500 dur (notr) · 1900 ileri.
+# YUKLEME: QGC > Vehicle Setup > Parameters > Tools > Load from file
+#          (auv_v6x_baseline.param'in USTUNE yuklenir; sadece PWM sinirlarini set eder)
+# ARAÇTA DOGRULA: yuklemeden sonra QGC Motor Setup'ta her motor 1500'de DURMALI,
+#                 ARM'siz test etme; ESC kalibrasyonu ayri (bkz. manuel checklist).
+
+# --- Genel motor PWM tavan/taban (ArduSub thruster araligi) ---
+MOT_PWM_MIN,1100
+MOT_PWM_MAX,1900
+
+# --- Per-kanal cikis sinirlari (SERVO1..8 = motor 1..8) ---
+SERVO1_MIN,1100
+SERVO1_MAX,1900
+SERVO1_TRIM,1500
+SERVO2_MIN,1100
+SERVO2_MAX,1900
+SERVO2_TRIM,1500
+SERVO3_MIN,1100
+SERVO3_MAX,1900
+SERVO3_TRIM,1500
+SERVO4_MIN,1100
+SERVO4_MAX,1900
+SERVO4_TRIM,1500
+SERVO5_MIN,1100
+SERVO5_MAX,1900
+SERVO5_TRIM,1500
+SERVO6_MIN,1100
+SERVO6_MAX,1900
+SERVO6_TRIM,1500
+SERVO7_MIN,1100
+SERVO7_MAX,1900
+SERVO7_TRIM,1500
+SERVO8_MIN,1100
+SERVO8_MAX,1900
+SERVO8_TRIM,1500
