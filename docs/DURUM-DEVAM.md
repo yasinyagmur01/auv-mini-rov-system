@@ -3,12 +3,19 @@
 **Son güncelleme: 10 Temmuz 2026.** Bu dosya, işe başka bir PC'de git ile devam
 edildiğinde "nerede kaldık" bilgisini taşır.
 
+> ⚠️ **Tarihsel snapshot.** Bazı satırlar sonradan güncellendi (satır-içi `DÜZELTİLDİ`
+> notlarıyla işaretli). Güncel/çelişkili konularda **tek doğruluk kaynağı** için
+> [KARAR-GECMISI.md](KARAR-GECMISI.md)'ye bakın.
+
 ## Genel mimari
 - **AUV:** 8 motor + Jetson Orin NX + CUAV V6X (ArduSub) + Bar30 + Ping sonar +
   Helical FP9 GNSS + RealSense D435. Ayrıca Jetson'da **ZED 2i** + ROS2 SLAM.
 - **Mini ROV:** RPi4 + BlueOS/Navigator + low-light USB kamera (4 motor takılacak).
-- **Ağ (192.168.2.0/24, fiber):** Kontrol PC (Ethernet .196), BlueOS/Mini ROV .2,
-  **Jetson .135 (DHCP; statik .3 uygulanmadı)**. DHCP var ama **internet yok**.
+- **Ağ (192.168.2.0/24, fiber):** Kontrol PC (Ethernet **.1**), BlueOS/Mini ROV .2,
+  **Jetson .135 (statik, enP8p1s0)**. **İnternet yok.**
+  <!-- DÜZELTİLDİ 2026-07-26: eski "PC .196" → .1 ; eski "Jetson .135 DHCP, statik .3
+       uygulanmadı" → statik .135 uygulandı (canlı doğrulandı 07-23). Bkz KARAR-GECMISI.md #3. -->
+- <!-- (bu satır tarihseldir; en güncel ağ bilgisi için ag-kurulumu.md / KARAR-GECMISI.md) -->
 - Otopilot: **ArduSub 4.7.0 beta, hedef CUAV-V6X-v2** (kart v2, stable yok — DONDUR).
 
 ## Şu an ÇALIŞAN
@@ -23,7 +30,9 @@ edildiğinde "nerede kaldık" bilgisini taşır.
   Ayrıca test sıra no **0-tabanlı**: seq k → SERVO çıkış k+1. Bridge UI "Motor N"→seq(N-1)→
   fiziksel çıkış N eşliyor. Testler arası **~10s cooldown** (ArduSub kuralı; UI'da beklemeli).
   QGC'ye artık gerek yok. Canlı COMMAND_ACK + /mav/servo_out ile doğrulandı.
-- **Ping sonar:** TELEM1'e takılı; `SERIAL1_PROTOCOL=9, RNGFND1_TYPE=23` ile açıldı.
+- **Ping sonar:** TELEM2'ye takılı; `SERIAL2_PROTOCOL=9, RNGFND1_TYPE=23` ile açıldı.
+  <!-- DÜZELTİLDİ 2026-07-26: eski "TELEM1 / SERIAL1" → TELEM2 / SERIAL2 (baseline.param +
+       kablolama.md gerçeği). Bkz KARAR-GECMISI.md #4. -->
 - **Mini ROV kamera:** BlueOS'ta RTSP stream ("MiniROV-Web", `rtsp://192.168.2.2:8554/minirov`).
 
 ## ⚠️ Geri alınacak bench ayarı

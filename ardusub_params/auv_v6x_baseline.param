@@ -38,7 +38,11 @@ FS_GCS_ENABLE,0         # Gorev 2'de kablo sokulecegi icin GCS failsafe KAPALI
 FS_PRESS_ENABLE,1       # derinlik limiti asilirsa uyar
 FS_PRESS_MAX,180000     # ~18 m (Pa cinsinden gosterge; QGC'den dogrulayin)
 FS_BATT_ENABLE,2        # dusuk bataryada yuzeye
-FS_LEAK_ENABLE,2        # sizinti sensoru takilirsa: yuzeye
+FS_LEAK_ENABLE,2        # sizinti sensoru takilirsa: yuzeye (HEDEF deger)
+                        # NOT: Bu dosya FC'ye yuklenene dek FC'de 1 (warn-only) okunabilir
+                        # (2026-07-16 saha okumasi). Celisqi degil: hedef<->canli farki.
+                        # Ayrica tek basina yetmez; LEAK1_PIN tanimli olmali (bkz asagi).
+                        # Bkz docs/KARAR-GECMISI.md #2.
 ARMING_CHECK,1
 
 # --- Sizinti (Leak) sensoru — AUX1 sinyal, CUAV V6X ---

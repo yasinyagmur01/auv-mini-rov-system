@@ -26,7 +26,7 @@ geçirmek.
 | Motor Test | `jetson/motortest.html` | `/test` |
 | Mini ROV | `jetson/minirov.html` | `/minirov` |
 
-Sunucu: `jetson/ros2_web_bridge.py` (saf Python `http.server`, port 8000). Sayfalar aynı
+Sunucu: `jetson/ros2_web_bridge.py` (**Flask** + rclpy + PIL, port 8000). Sayfalar aynı
 klasörden servis edilir (`control.html` şu an `web/templates/`'te — `/control`'ü demo'da
 görmek için `jetson/`'a kopyalaman gerekebilir).
 

@@ -38,21 +38,23 @@ Her sensörün mesajının aktığını gözle doğrulayın:
 
 ## C. Motor sırası ve yönü (motorlar kovada — EN ÖNEMLİ tezgah işi)
 
-> **BU FIRMWARE'DE (ArduSub 4.7.0 beta, CUAV-V6X-v2) MOTOR TESTİ = QGC.**
-> Ham `MAV_CMD_DO_MOTOR_TEST` (özel `panel/motor_test.py` dahil) reddediliyor:
-> DISARM iken "Arm motors before testing motors", elle ARM edince "bad test
-> type 0.00". Sadece **QGC Motors sayfası çalışıyor** (arka planda otomatik
-> arm/disarm + kendi komut biçimi). Motor bring-up/eşleme QGC ile yapılır.
+> **GÜNCELLENDİ 2026-07-26 — motor testi web arayüzünden ÇALIŞIYOR.** (Eski bu bölüm
+> "motor testi = yalnız QGC, `MAV_CMD_DO_MOTOR_TEST` reddediliyor" diyordu — bu **artık
+> geçersiz.**) "bad test type 0.00" bir firmware bug'ı DEĞİLMİŞ: ArduSub test type'ı
+> param6 (`MOTOR_TEST_ORDER`) alanından okuyup **2 (BOARD)** bekliyor. Köprü çözümü:
+> `y=2` + komutu **20 Hz** tekrarla (500 ms watchdog) + **her testten önce ARM**
+> (ArduSub test bitince oto-disarm). Panel `/test` ve `/control`'den 8 motor da döndü
+> (canlı `COMMAND_ACK` + `/mav/servo_out` ile doğrulandı). Detay: `docs/KARAR-GECMISI.md` #1.
+> QGC Motors sayfası **hâlâ geçerli bir alternatiftir** (özellikle ilk eşleme için).
 
-**QGC ile motor eşleme:**
-- QGC → Vehicle Setup → **Motors** sayfası.
-- Motorlar suda, e-stop elde. Bir motorun slider'ını hafifçe yukarı çek → döner.
-- QGC slider no = ArduSub motor no. Hangi fiziksel motor (renk/konum) döndü not et.
+**Web panelinden (birincil yol) veya QGC ile motor eşleme:**
+- Web: panelde `/test` (Motor Test) → her motoru tek tek kısa/düşük güçte döndür.
+- QGC: Vehicle Setup → **Motors** sayfası (alternatif) → slider'ı hafifçe yukarı çek.
+- Motorlar suda, e-stop elde. Hangi fiziksel motor (renk/konum) döndü not et.
+- Panel "Motor N" → ArduSub çıkış N eşlemesi (0-tabanlı seq: seq(N-1) → çıkış N).
 - 8 motoru tek tek yap → ArduSub çıkışı ↔ fiziksel motor eşleme tablosu (KTR için de).
 - **Test edilen numara ArduSub çıkışıdır, senin renk etiketinle aynı olmayabilir.**
-
-(Özel `panel/motor_test.py`'nin bu firmware'de çalışması için QGC'nin gönderdiği
-tam komutun köprüyle yakalanıp kopyalanması gerekir — ileride yapılabilir.)
+- Testler arası ~10 s cooldown (ArduSub kuralı; UI beklemeyi gösterir).
 
 ### Gerçek test — güç ve güvenlik (ÖNEMLİ)
 
