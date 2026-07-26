@@ -87,7 +87,7 @@ Her iki yolla da:
 
 ## D. Ağ + telemetri (Jetson, BlueOS, panel)
 
-- [ ] Statik IP'ler ayarlı (PC .1, BlueOS .2, Jetson .3). `ping 192.168.2.3` ve
+- [ ] Statik IP'ler ayarlı (PC .1, BlueOS .2, Jetson .135). `ping 192.168.2.135` ve
       `ping 192.168.2.2` çalışıyor.
 - [ ] Jetson'da `sudo systemctl status mavlink-router` → aktif, FC (`/dev/ttyFC`) bağlı.
 - [ ] QGC'de AUV (araç 1) görünüyor; Mini ROV hazırsa araç 2 de.

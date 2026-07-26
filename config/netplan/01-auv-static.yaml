@@ -1,10 +1,11 @@
 # Jetson statik IP (kopyala: /etc/netplan/01-auv-static.yaml ; sudo netplan apply)
-# Arayuz adini `ip link` ile dogrulayin (eth0 varsayildi).
+# Arayuz adini `ip link` ile dogrulayin. Sahadaki Orin NX'te arayuz: enP8p1s0.
+# CANLI DOGRULANDI 2026-07-23: Jetson enP8p1s0 = 192.168.2.135/24 (statik, noprefixroute).
 network:
   version: 2
   renderer: networkd
   ethernets:
-    eth0:
+    enP8p1s0:
       dhcp4: false
-      addresses: [192.168.2.3/24]
+      addresses: [192.168.2.135/24]
       # internet gerekliyse (kurulum asamasi) gateway'li ikinci profil kullanin

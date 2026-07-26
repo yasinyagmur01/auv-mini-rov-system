@@ -21,8 +21,8 @@ TEKNOFEST insansız su altı yarışması yazılımı. Tek depo, iki alt-sistem:
 Yerelde donanımsız test: `python3 jetson/mock_host.py` → http://127.0.0.1:8001/ (sahte veri, "MOCK VERİ" bandı).
 
 ## Ağ
-Düz L2 (`192.168.2.0/24`). Jetson **192.168.2.10** (DHCP rezervasyonu; AVerMedia MAC `00:18:1a:*`),
-BlueOS/Mini ROV **.2**, kontrol PC **.196**. Panel: `http://192.168.2.10:8000/`.
+Düz L2 (`192.168.2.0/24`, DHCP yok). Jetson **192.168.2.135** (statik, arayüz `enP8p1s0`; canlı doğrulandı 2026-07-23),
+BlueOS/Mini ROV **.2**, kontrol PC **.1** (`mavlink-router` QGC/panel'i `.1`'e push eder). Panel: `http://192.168.2.135:8000/`.
 
 ## Deploy + Boot (tek yol)
 ```bash

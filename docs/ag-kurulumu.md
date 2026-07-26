@@ -6,7 +6,7 @@ Tek düz L2 ağ (fiber çeviriciler şeffaf), alt ağ `192.168.2.0/24`, DHCP yok
 |---|---|---|
 | Kontrol PC | 192.168.2.1 | Windows: Ethernet adaptörü → statik IP (BlueOS karayı .1 varsayar) |
 | Mini ROV (BlueOS) | 192.168.2.2 | BlueOS varsayılanı — değiştirmeyin |
-| Jetson | 192.168.2.3 | `config/netplan/01-auv-static.yaml` → `/etc/netplan/` |
+| Jetson | 192.168.2.135 | `config/netplan/01-auv-static.yaml` (arayüz `enP8p1s0`) → `/etc/netplan/` |
 | Yedek laptop | 192.168.2.4 | opsiyonel |
 
 ## Portlar
@@ -23,7 +23,7 @@ Tek düz L2 ağ (fiber çeviriciler şeffaf), alt ağ `192.168.2.0/24`, DHCP yok
 
 ## Doğrulama sırası (tezgahta)
 
-1. `ping 192.168.2.3` (Jetson) ve `ping 192.168.2.2` (BlueOS) — fiber zinciri sağlam.
+1. `ping 192.168.2.135` (Jetson) ve `ping 192.168.2.2` (BlueOS) — fiber zinciri sağlam.
 2. Jetson'da `systemctl status mavlink-router` — FC bağlı, uçlar açık.
 3. Kontrol PC'de QGC aç → araç 1 (AUV) ve araç 2 (Mini ROV) otomatik görünmeli.
 4. Panel `python main.py` → telemetri etiketleri dolmalı, WS "bağlı".
