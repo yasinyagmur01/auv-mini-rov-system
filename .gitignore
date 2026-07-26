@@ -6,3 +6,4 @@ maps/*.area
 docker/volumes/
 ui/recordings/
 **/__pycache__/
+logs/
