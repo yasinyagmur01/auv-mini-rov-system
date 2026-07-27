@@ -71,9 +71,15 @@ ZED_ODOM_TOPIC = '/zed/zed_node/odom'
 ZED_PCL_TOPIC = '/zed/zed_node/point_cloud/cloud_registered'
 PCL_MAX_POINTS = 3500     # tarayiciya gonderilecek azami nokta (bant genisligi kontrolu)
 PCL_MIN_PERIOD = 0.5      # sn; bu periyottan sik islemez (~2 Hz)
-# Mini ROV (BlueOS/Navigator) mavlink2rest sysid. ARAÇTA DOĞRULA: docs SYSID_THISMAV=2
-# der ama motor-test POST target_system=1 kullaniyor. GET yolunda /mavlink agacina
-# bakip aracin ilan ettigi sysid'yi teyit et.
+# Mini ROV (BlueOS/Navigator) mavlink2rest sysid.
+# ARAÇTA DOĞRULANDI 2026-07-27: mavlink2rest /v1/mavlink agacinda Mini ROV kendini
+# sysid=1 ilan ediyor (HEARTBEAT: MAV_TYPE_SUBMARINE, ArduPilotMega). sysid=2 bos.
+# Sebep: minirov_navigator.param (SYSID_THISMAV=2) Navigator'a HENUZ YUKLENMEDI -> ArduSub
+# varsayilani 1'de kaliyor. Bu yuzden NAV_SYSID=1 su an DOGRU.
+# !!! CAKISMA UYARISI: AUV de sysid=1 (auv_v6x_baseline.param). Iki arac AYNI ANDA acilinca
+# QGC/mavlink'te CAKISIRLAR. Kalici cozum: Mini ROV'a minirov_navigator.param yuklenip
+# SYSID_THISMAV=2 yapilinca BURAYI da NAV_SYSID=2 yap (iki arac birlikte acikken dogrula).
+# Bkz docs/KARAR-GECMISI.md #7 + docs/AKSIYON-PLANI.md.
 NAV_SYSID = 1
 
 JPEG_QUALITY = 70

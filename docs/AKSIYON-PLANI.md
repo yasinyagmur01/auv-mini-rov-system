@@ -48,6 +48,10 @@ Havuz erişimi gerektirir; her param değişikliğinden sonra **dump alıp commi
       `/lane/*`, `LaneFollowStep`) ama üretici node yazılmadı → otonom şerit şu an uçtan uca çalışmaz.
 - [ ] EKF / gelişmiş sensör füzyonu (robot_localization, D* Lite) — ARCHITECTURE.md'de "planlı".
 - [ ] Mini ROV motor montajı + `minirov_navigator.param` doğrulama (ayrı araç, AUV'yi bloke etmez).
+- [ ] **Mini ROV sysid çakışması (#7):** Navigator şu an varsayılan **sysid=1** (param yüklenmemiş);
+      AUV de sysid=1 → iki araç birlikte açılınca çakışır. `minirov_navigator.param` yükle
+      (SYSID_THISMAV=2) → `jetson/ros2_web_bridge.py:NAV_SYSID`'i **2** yap → iki araç birlikte
+      açıkken QGC'de çakışmasız göründüğünü doğrula. (Teyit: 2026-07-27 mavlink2rest.)
 - [ ] ZED USB3 dayanıklılık (fiziksel kök neden: kablo/güç/titreşim).
 - [ ] Leak 5V↔3.3V gerilim uyumu devresi (gerilim böler / 6.6V ADC girişi) — çözülmeden ıslatma riskli.
 

@@ -64,10 +64,13 @@ kanıta dayanarak. Yeni bir karar çıktığında en üste ekle (en yeni üstte)
 | **Gerekçe** | Kaynakta `from flask import Flask` ve `app = Flask(__name__)` mevcut. |
 | **Kaynak** | `jetson/ros2_web_bridge.py:2, 38, 582` |
 
-### 7) Mini ROV NAV_SYSID — 1 mi, 2 mi? **(AÇIK — donanım teyidi gerek)**
+### 7) Mini ROV NAV_SYSID — 1 mi, 2 mi? **(ÇÖZÜLDÜ 2026-07-27 — koşullu)**
 | Alan | İçerik |
 |---|---|
 | **Konu** | Köprünün mavlink2rest'te sorguladığı Mini ROV sysid |
-| **Durum** | **AÇIK / ÇÖZÜLMEDİ.** Param `SYSID_THISMAV=2` diyor; köprü kodu `NAV_SYSID=1` sorguluyor. Kodun kendi yorumu bile "ARAÇTA DOĞRULA" diyor. |
-| **Karar** | Fonksiyonel kod **değiştirilmedi** (yanlış değer Mini ROV telemetri/motor rölesini bozabilir). Donanımda `mavlink2rest .../vehicles` uç noktasından aracın ilan ettiği gerçek sysid teyit edilecek, sonra `NAV_SYSID` ona göre ayarlanacak. |
-| **Kaynak** | `ardusub_params/minirov_navigator.param:47` (SYSID_THISMAV=2) · `jetson/ros2_web_bridge.py:74-77` (NAV_SYSID=1) |
+| **Donanım teyidi** | 2026-07-27, Mini ROV canlı: mavlink2rest `/v1/mavlink` ağacında araç **sysid=1** ilan ediyor (HEARTBEAT: MAV_TYPE_SUBMARINE, ArduPilotMega). sysid=2 boş. |
+| **Doğru bilgi (şimdilik)** | **`NAV_SYSID=1` şu an DOĞRU.** Neden: `minirov_navigator.param` (SYSID_THISMAV=2) Navigator'a **henüz yüklenmedi** → ArduSub varsayılanı 1'de kalıyor. |
+| **⚠ Çakışma riski** | AUV de sysid=1 (`auv_v6x_baseline.param`). İki araç **aynı anda** açılınca QGC/mavlink'te **çakışırlar**. Mini ROV'un 2 olmasının sebebi buydu. |
+| **Kalıcı çözüm (takip)** | Mini ROV'a `minirov_navigator.param` yüklenip SYSID_THISMAV=2 yapılınca `NAV_SYSID`'i **2** yap; iki araç birlikte açıkken çakışmasız çalıştığını doğrula. `docs/AKSIYON-PLANI.md`'de takip. |
+| **Karar** | Kod değeri 1'de bırakıldı (canlıyla uyumlu); yorum bloğu bulgu + çakışma bağımlılığıyla güncellendi. |
+| **Kaynak** | canlı mavlink2rest `192.168.2.2:6040/v1/mavlink` · `ardusub_params/minirov_navigator.param:47` · `jetson/ros2_web_bridge.py:74-77` |
