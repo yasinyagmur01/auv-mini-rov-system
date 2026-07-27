@@ -6,6 +6,7 @@ Tek düz L2 ağ (fiber çeviriciler şeffaf), alt ağ `192.168.2.0/24`, DHCP yok
 |---|---|---|
 | Kontrol PC | 192.168.2.1 | Windows: Ethernet adaptörü → statik IP (BlueOS karayı .1 varsayar) |
 | Mini ROV (BlueOS) | 192.168.2.2 | BlueOS varsayılanı — değiştirmeyin |
+| CUAV V6X FC (AUV) | 192.168.2.20 | FC `NET_` params (ethernet, UDP server 14550). mavlink-router `main-ethernet.conf`. USB `/dev/ttyFC` yedek. (2026-07-27) |
 | Jetson | 192.168.2.135 | `config/netplan/01-auv-static.yaml` (arayüz `enP8p1s0`) → `/etc/netplan/` |
 | Yedek laptop | 192.168.2.4 | opsiyonel |
 

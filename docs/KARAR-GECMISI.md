@@ -8,6 +8,18 @@ kanıta dayanarak. Yeni bir karar çıktığında en üste ekle (en yeni üstte)
 
 ---
 
+## 2026-07-27 — CUAV V6X USB→Ethernet geçişi (TAMAMLANDI)
+
+| Alan | İçerik |
+|---|---|
+| **Konu** | AUV FC (CUAV V6X) ile Jetson arasındaki MAVLink bağlantısı |
+| **Eski durum** | USB seri (`/dev/ttyFC`, udev symlink) → mavlink-router. Titrek: USB kopmaları. |
+| **Kök neden** | (1) Regülatör yandı → FC'ye güç yok (tamir edildi). (2) FMU USB'si araç hub'ı üzerinden Jetson'a hiç ulaşmıyordu — o portta aslında u-blox GPS vardı. FMU doğrudan Jetson'a takılınca `1209:5740 CUAV-V6X-v2` enumerate oldu, `/dev/ttyFC→ttyACM1`. |
+| **Yeni/doğru** | **FC ethernet ile bağlı: `192.168.2.20:14550`** (NET_ENABLE=1, NET_DHCP=0, NET_IPADDR=192.168.2.20, NET_NETMASK=24, NET_P1_TYPE=2 UDP Server, PORT=14550, PROTOCOL=MAVLink2). Bu ayarlar FC'de zaten mevcuttu (`.10` değil `.20`). mavlink-router `main-ethernet.conf` (UDP .20:14550) ile bağlanıyor. |
+| **Doğrulama** | 2026-07-27: USB çekiliyken `link_ok=True` (3/3), `.20` ping 0.15ms, sağlık testi "TÜM KRİTİK KARTLARLA HABERLEŞME VAR". |
+| **Not** | Şablon `.10` varsayıyordu → gerçeğe (`.20`) göre güncellendi. USB (`/dev/ttyFC`, `main.conf`) acil yedek olarak durur. systemd override `ttyFC bekle`→`.20 ping bekle`. |
+| **Kaynak** | `config/mavlink-router/main-ethernet.conf` · `config/mavlink-router/override-ethernet.conf` · canlı FC NET_ params |
+
 ## 2026-07-26 — Analiz sonrası 7 çelişki çözümü
 
 ### 1) Motor testi — web'den mi, yalnız QGC'den mi?

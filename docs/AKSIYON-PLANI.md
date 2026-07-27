@@ -13,6 +13,10 @@ analizi. Güncel/çelişkili konularda [KARAR-GECMISI.md](KARAR-GECMISI.md) tek 
 
 Bunlar bitmeden araç suya atılmamalı. Öncelik sırasıyla:
 
+- [x] **FC↔Jetson bağlantısı (TAMAMLANDI 2026-07-27):** CUAV V6X ethernet'e taşındı
+      (`192.168.2.20:14550`, UDP server). USB-only'den kurtulundu; USB acil yedek.
+      Doğrulama: USB çekiliyken `link_ok=True`, sağlık testi tam yeşil. Bkz KARAR-GECMISI.
+
 - [ ] **Motor kanal eşleme + yön (QGC veya panel `/test`).** 8 motoru tek tek döndür, panel/QGC
       numarası ↔ fiziksel motor eşle; ters dönenlere `MOT_x_DIRECTION=-1`. → **Tam param dump'ı
       `ardusub_params/auv_v6x_YYYYAAGG.param` olarak repoya geri yaz** (şu an param'da `MOTn_`/yön yok).

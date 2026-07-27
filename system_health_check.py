@@ -64,6 +64,8 @@ HOSTS = [
      True,  "config/netplan/01-auv-static.yaml:8"),
     ("192.168.2.2",   "Mini ROV — RPi4 + Navigator (BlueOS)",
      True,  "docs/ag-kurulumu.md:8"),
+    ("192.168.2.20",  "CUAV V6X FC — ethernet (MAVLink UDP 14550)",
+     True,  "config/mavlink-router/main-ethernet.conf"),
     ("192.168.2.1",   "Kontrol PC (planlanan / mavlink-router hedefi)",
      False, "config/mavlink-router/main.conf:19"),
     ("192.168.2.196", "Kontrol PC (sahada gözlenen adres)",
@@ -965,7 +967,8 @@ NET_INFO_LINES = [
     "Jetson AUV : 192.168.2.135  (enP8p1s0, statik)  · HTTP 8000 · WS 8765 · UI 8080",
     "Mini ROV   : 192.168.2.2    (RPi4+Navigator/BlueOS) · mavlink2rest 6040 · WebRTC 6021",
     "Kontrol PC : 192.168.2.1    (QGC 14550, panel 14552)",
-    "FC (CUAV)  : USB seri /dev/ttyFC → mavlink-router → ROS köprüsü (udp 14551)",
+    "FC (CUAV)  : 192.168.2.20 (ethernet, UDP 14550) → mavlink-router → ROS köprüsü (udp 14551)",
+    "             (USB /dev/ttyFC yedek: config/mavlink-router/main.conf ile geri alinir)",
 ]
 
 
