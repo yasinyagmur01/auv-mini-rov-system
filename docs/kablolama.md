@@ -6,7 +6,7 @@
 |---|---|---|
 | CUAV V6X ↔ Jetson | USB (Type-C) | udev ile `/dev/ttyFC` (bkz. `scripts/99-auv-serial.rules`; `lsusb` ile VID/PID doğrulayın) |
 | Bar30 | V6X **harici I2C** (GPS1/GPS2 konektörünün I2C pinleri) | MS5837 otomatik algılanır; QGC'de `SCALED_PRESSURE2` görünmeli |
-| Ping Sonar | V6X **TELEM2** (SERIAL2), 115200 | Ping firmware **≥ 3.28** (PingViewer ile güncelle). Aşağı bakacak şekilde monte |
+| Ping Sonar | V6X **TELEM1** (SERIAL1), 115200 | Canlı FC doğrulandı 2026-07-27 (`SERIAL1_PROTOCOL=9`). Ping firmware **≥ 3.28**. Aşağı bakacak şekilde monte |
 | Helical FP9 GNSS | V6X **GPS1** (SERIAL3) | Anten su üstündeyken fix alır; `GPS_TYPE=1` |
 | RealSense D435 | Jetson USB 3.0 | Şerit takibi için aşağı-ileri açıyla, düz port arkasında |
 | Fiber çevirici A | AUV Ethernet anahtarına | Jetson + Mini ROV fiber çifti aynı anahtarda |

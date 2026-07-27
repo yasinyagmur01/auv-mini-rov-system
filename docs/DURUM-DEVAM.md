@@ -30,9 +30,9 @@ edildiğinde "nerede kaldık" bilgisini taşır.
   Ayrıca test sıra no **0-tabanlı**: seq k → SERVO çıkış k+1. Bridge UI "Motor N"→seq(N-1)→
   fiziksel çıkış N eşliyor. Testler arası **~10s cooldown** (ArduSub kuralı; UI'da beklemeli).
   QGC'ye artık gerek yok. Canlı COMMAND_ACK + /mav/servo_out ile doğrulandı.
-- **Ping sonar:** TELEM2'ye takılı; `SERIAL2_PROTOCOL=9, RNGFND1_TYPE=23` ile açıldı.
-  <!-- DÜZELTİLDİ 2026-07-26: eski "TELEM1 / SERIAL1" → TELEM2 / SERIAL2 (baseline.param +
-       kablolama.md gerçeği). Bkz KARAR-GECMISI.md #4. -->
+- **Ping sonar:** TELEM1'e takılı; `SERIAL1_PROTOCOL=9, RNGFND1_TYPE=23` ile açıldı.
+  <!-- DOĞRULANDI 2026-07-27: canli FC dump SERIAL1_PROTOCOL=9 -> bu satir BASTAN DOGRUYMUS.
+       (26 Tem'de yanlislikla SERIAL2'ye cevrilmisti, geri alindi.) Bkz KARAR-GECMISI.md #4. -->
 - **Mini ROV kamera:** BlueOS'ta RTSP stream ("MiniROV-Web", `rtsp://192.168.2.2:8554/minirov`).
 
 ## ⚠️ Geri alınacak bench ayarı

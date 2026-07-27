@@ -49,14 +49,15 @@ kanıta dayanarak. Yeni bir karar çıktığında en üste ekle (en yeni üstte)
 | **Gerekçe** | README (07-23, en yeni) + ag-kurulumu + tezgah-testi hepsi `.1` diyor; DURUM-DEVAM bayat. |
 | **Kaynak** | `docs/ag-kurulumu.md` (IP tablosu) · `README.md` (07-23 ağ satırı) |
 
-### 4) Ping Sonar portu — SERIAL1/TELEM1 mi, SERIAL2/TELEM2 mi?
+### 4) Ping Sonar portu — SERIAL1/TELEM1 mi, SERIAL2/TELEM2 mi? **(DÜZELTİLDİ 2026-07-27)**
 | Alan | İçerik |
 |---|---|
 | **Konu** | Ping sonarın bağlı olduğu seri port |
-| **Eski bilgi** | `docs/DURUM-DEVAM.md` (10 Tem): "TELEM1'e takılı; `SERIAL1_PROTOCOL=9`" |
-| **Doğru bilgi** | **SERIAL2 / TELEM2** (`SERIAL2_PROTOCOL,9`, 115200). |
-| **Gerekçe** | Yüklenen baseline param'ı SERIAL2 kullanıyor (yerleşim gerçeği) ve kablolama.md de TELEM2 diyor; DURUM-DEVAM'daki TELEM1 erken/bayat bilgi. |
-| **Kaynak** | `ardusub_params/auv_v6x_baseline.param:15-16` · `docs/kablolama.md:9` |
+| **İlk (yanlış) karar 2026-07-26** | baseline.param şablonuna güvenerek "SERIAL2/TELEM2" denmişti; DURUM-DEVAM'ın "SERIAL1" notu bayat sanılıp düzeltilmişti. **Bu yanlıştı.** |
+| **Doğru bilgi (donanım)** | **SERIAL1 / TELEM1** (`SERIAL1_PROTOCOL=9`). Canlı FC dump'ı (2026-07-27, ethernet .20): `SERIAL1_PROTOCOL=9`, `SERIAL2_PROTOCOL=2`. Yani Ping SERIAL1'de. |
+| **Gerekçe** | Donanım gerçeği şablonu ezer. DURUM-DEVAM (kurulumu yapan handoff) baştan doğruymuş. baseline.param'daki "SERIAL2" şablon hatasıydı → düzeltildi. |
+| **Düzeltme** | baseline.param SERIAL2→SERIAL1; DURUM-DEVAM'daki hatalı "SERIAL2" geri-düzeltmesi geri alındı. |
+| **Kaynak** | canlı dump `ardusub_params/auv_v6x_20260727.param` (SERIAL1_PROTOCOL=9) · `docs/DURUM-DEVAM.md` · `ardusub_params/auv_v6x_baseline.param` |
 
 ### 5) `GPS_TYPE` — 1 mi, 5 mi?
 | Alan | İçerik |

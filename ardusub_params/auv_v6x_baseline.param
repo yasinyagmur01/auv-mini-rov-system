@@ -3,25 +3,38 @@
 # NOT: Bu dosya BASLANGIC noktasidir; kalibrasyonlar (pusula, ivmeolcer,
 # joystick) QGC'den ayrica yapilmali, sonra tam dump alinip bu klasore
 # auv_v6x_YYYYAAGG.param olarak kaydedilmelidir (her havuz gunu!).
+#
+# CANLI DUMP KAYNAK: ardusub_params/auv_v6x_20260727.param (1112 param, ethernet .20).
+# DONANIM DENETIMI 2026-07-27 (Faz 1) — bu dosya FC'ye TAM YUKLENMEMISTI, uyumsuzluklar:
+#  * 4.7 PARAM RENAME: SYSID_THISMAV->MAV_SYSID, GPS_TYPE->GPS1_TYPE (eski isimler
+#    QGC "Load from file"da yok sayilir!). Asagida yeni isimler kullanildi.
+#  * Ping sonar SERIAL2 DEGIL SERIAL1'de (canli FC: SERIAL1_PROTOCOL=9). Duzeltildi.
+#  * GPS1_TYPE canli=9 (baseline 1/AUTO degil) -> catida GPS ile DOGRULA.
+#  * BATT_MONITOR=0 (tezgah, batarya yok) + ARMING_SKIPCHK=16776767 (cogu arming
+#    kontrolu atlanmis, tezgah kolayligi) -> GERCEK OPERASYON ONCESI gozden gecir.
+#  * NET_ (ethernet) params FC'de mevcut (bkz config/mavlink-router/main-ethernet.conf).
 
 # --- Kimlik / cerceve ---
-SYSID_THISMAV,1
+MAV_SYSID,1             # (4.7: eski SYSID_THISMAV). AUV=1. Mini ROV=2 olmali (bkz KARAR #7)
 FRAME_CONFIG,2          # Vectored_6DOF (8 motor, BlueROV2-Heavy yerlesimi)
                         # QGC motor diyagramiyla DOGRULANDI:
                         #   1,2 (on) + 3,4 (arka) = yatay vektorel (capraz ikon)
                         #   5,6 (on) + 7,8 (arka) = dikey (dairesel ikon)
                         # Yesil/mavi renkler pervane donus yonunu (CW/CCW) gosterir.
 
-# --- Ping Sonar (TELEM2 = SERIAL2) ---
-SERIAL2_PROTOCOL,9      # Lidar/Rangefinder
-SERIAL2_BAUD,115
+# --- Ping Sonar (TELEM1 = SERIAL1) ---
+# DUZELTILDI 2026-07-27: canli FC Ping'i SERIAL1'de tutuyor (SERIAL1_PROTOCOL=9),
+# SERIAL2 degil. Onceki "SERIAL2" degeri sablon hatasiydi; DURUM-DEVAM'daki
+# "TELEM1/SERIAL1" dogruymus. Bkz KARAR-GECMISI.md #4.
+SERIAL1_PROTOCOL,9      # Lidar/Rangefinder
+SERIAL1_BAUD,115
 RNGFND1_TYPE,23         # BlueRoboticsPing (Ping firmware >= 3.28!)
 RNGFND1_ORIENT,25       # asagi bakis
 RNGFND1_MIN,0.3
 RNGFND1_MAX,30
 
 # --- GNSS (Helical FP9, GPS1 = SERIAL3) ---
-GPS_TYPE,1              # AUTO; kilitlenmezse 5 (NMEA) deneyin
+GPS1_TYPE,1             # (4.7: eski GPS_TYPE). AUTO; canli FC=9 -> CATIDA DOGRULA
 
 # --- Bar30 ---
 # Harici I2C'de MS5837 normalde otomatik algilanir (SCALED_PRESSURE2 kontrol).
