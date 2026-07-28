@@ -100,6 +100,14 @@ class MavBridge(Node):
         self._p0_captured = None   # auto-zero: ilk Bar30 okumasi
         self._leak_latched = False  # P0 sizinti mandali (bir kez True -> True kalir)
 
+        # GPS yayin hizi garantisi: FC'ye GPS_RAW_INT icin SET_MESSAGE_INTERVAL gonder.
+        # Deploy topolojisi: F9P -> CAN1 -> CUAV -> MAVLink; FC varsayilan yayinina
+        # guvenmek yerine hizi acikca isteriz (QGC bagli olsun olmasin garanti).
+        self.declare_parameter('gps_rate_hz', 5.0)
+        self.gps_rate = float(self.get_parameter('gps_rate_hz').value)
+        self._gps_last = 0.0       # son GPS_RAW_INT zamani (akis izleme)
+        self._gps_req_sent = 0     # acilista gonderilen istek sayaci
+
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 
         self.pub_att = self.create_publisher(Vector3Stamped, '/mav/attitude', qos)
@@ -175,6 +183,7 @@ class MavBridge(Node):
         self.create_timer(0.05, self._mt_tick)   # 20Hz motor test tekrari (watchdog beslemesi)
         self.create_timer(0.2, self._do_tick)    # 5Hz dogrudan cikis DO_SET_SERVO tekrari
         self.create_timer(0.5, self._link_tick)  # AUV FC link watchdog (HEARTBEAT tazeligi)
+        self.create_timer(2.0, self._gps_stream_tick)  # GPS_RAW_INT hiz garantisi + self-heal
         # Cokme-guvenligi: onceki oturum dogrudan modda cakildiysa fonksiyonlari geri yukle
         if os.path.exists(self._do_marker):
             self.get_logger().warn('Onceki oturum dogrudan cikis modunda kalmis; 3s sonra SERVO fonksiyonlari geri yuklenecek')
@@ -460,6 +469,32 @@ class MavBridge(Node):
         # AUV FC linki: son HEARTBEAT 3 sn'den taze mi? (net kopma tespiti)
         self.pub_link.publish(Bool(data=bool(self._last_hb and (time.time() - self._last_hb) < 3.0)))
 
+    def _request_gps_interval(self):
+        """FC'den GPS_RAW_INT'i gps_rate_hz ile iste (MAV_CMD_SET_MESSAGE_INTERVAL).
+        interval mikrosaniye; 0 => varsayilan, -1 => durdur (biz pozitif hiz kullaniriz)."""
+        interval_us = int(1_000_000 / self.gps_rate) if self.gps_rate > 0 else 0
+        self.mav.mav.command_long_send(
+            self.target, 1,
+            mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+            float(mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT),  # param1: mesaj id (24)
+            float(interval_us),                                 # param2: aralik (us)
+            0, 0, 0, 0, 0)
+
+    def _gps_stream_tick(self):
+        """Acilista GPS_RAW_INT hizini birkac kez iste (garanti); sonra akis durursa
+        (>3s) yeniden iste (self-heal). Akis canliyken hic komut gondermez (spam yok)."""
+        if not self._last_hb:
+            return  # link yok, heartbeat bekle
+        if self._gps_req_sent < 3:
+            self._request_gps_interval()
+            self._gps_req_sent += 1
+            if self._gps_req_sent == 1:
+                self.get_logger().info(
+                    f'GPS_RAW_INT {self.gps_rate:.0f}Hz istendi (SET_MESSAGE_INTERVAL)')
+            return
+        if (time.time() - self._gps_last) > 3.0:  # akis durdu -> yeniden iste
+            self._request_gps_interval()
+
     def h_heartbeat(self, m):
         if m.get_srcComponent() != 1:  # yalniz otopilot
             return
@@ -534,6 +569,7 @@ class MavBridge(Node):
         self.pub_range.publish(r)
 
     def h_gps(self, m):
+        self._gps_last = time.time()   # akis izleme (SET_MESSAGE_INTERVAL self-heal)
         fix = NavSatFix()
         fix.header.stamp = self._stamp()
         fix.header.frame_id = 'gps'
