@@ -84,8 +84,8 @@ MEDIA_CONVERTERS = [
 ]
 NET_IFACES = ["enP8p1s0"]  # Jetson'daki tek yapılandırılmış arayüz
 
-# CUAV V6X bu repoda ETHERNET ile DEĞİL, USB seri ile bağlı (udev: /dev/ttyFC).
-# Ethernet portu kullanılıyorsa --extra-ip ile IP'sini ver.
+# CUAV V6X artık ETHERNET birincil yol (192.168.2.20:14550 — HOSTS'ta kritik olarak var,
+# canlı doğrulandı 2026-07-27). USB seri yalnızca YEDEK yoldur; yokluğu arıza değildir.
 FC_SERIAL_PATHS = ["/dev/ttyFC", "/dev/ttyACM0"]
 
 # ---------------------------------------------------------------------------
@@ -444,21 +444,24 @@ def test_interfaces():
 
 
 def test_fc_serial():
-    """CUAV V6X USB seri portu (bu repoda FC ethernet ile değil USB ile bağlı)."""
+    """CUAV V6X USB seri (YEDEK yol). Ethernet birincil olduğundan yokluğu FAIL değildir."""
     t0 = time.monotonic()
     if IS_WINDOWS:
-        return Result("A/Ağ", "CUAV V6X seri portu (/dev/ttyFC)", SKIP,
+        return Result("A/Ağ", "CUAV V6X USB seri (yedek yol)", SKIP,
                       time.monotonic() - t0, "Linux dışı makine",
                       "scripts/99-auv-serial.rules:5")
     for path in FC_SERIAL_PATHS:
         if os.path.exists(path):
             real = os.path.realpath(path)
-            return Result("A/Ağ", "CUAV V6X seri portu", PASS,
-                          time.monotonic() - t0, "%s → %s" % (path, real),
+            return Result("A/Ağ", "CUAV V6X USB seri (yedek yol)", PASS,
+                          time.monotonic() - t0,
+                          "%s → %s (yedek yol takılı)" % (path, real),
                           "config/mavlink-router/main.conf:13")
-    return Result("A/Ağ", "CUAV V6X seri portu", FAIL, time.monotonic() - t0,
-                  "hiçbiri yok: %s (udev kuralı / USB kablo)" % ", ".join(FC_SERIAL_PATHS),
-                  "scripts/99-auv-serial.rules:5")
+    # Seri yok = beklenen (FC ethernet'te .20). SKIP — kritik FAIL değil.
+    return Result("A/Ağ", "CUAV V6X USB seri (yedek yol)", SKIP,
+                  time.monotonic() - t0,
+                  "USB seri yok — FC ethernet üzerinden (.20); seri yalnız yedek yol",
+                  "config/mavlink-router/main-ethernet.conf")
 
 
 # ===========================================================================
