@@ -24,6 +24,26 @@ Yerelde donanımsız test: `python3 jetson/mock_host.py` → http://127.0.0.1:80
 Düz L2 (`192.168.2.0/24`, DHCP yok). Jetson **192.168.2.135** (statik, arayüz `enP8p1s0`; canlı doğrulandı 2026-07-23),
 BlueOS/Mini ROV **.2**, kontrol PC **.1** (`mavlink-router` QGC/panel'i `.1`'e push eder). Panel: `http://192.168.2.135:8000/`.
 
+## Saha kontrolü — sağlık testi (tek komut)
+Kontrol PC'sinden (Windows / PowerShell) **tek kelime**; SSH'ı kendisi yapar, Jetson'da menü açar:
+```
+saha
+```
+Menü: **1** Haberleşme · **2** Sensör verileri · **3** Sensör seç (`-i`) · **4** Tam test · **5** Jetson kabuğu · **q** Çıkış.
+Her seçim raporu gösterir, `~/auv/logs/health_check_*.log`'a yazılır, sonra menüye döner.
+(`saha/` klasörü PATH'te — yeni terminalde `saha` her dizinden çalışır. Ayrıntı: [`saha/README.md`](saha/README.md).)
+
+Doğrudan **Jetson'da** (SSH'liyken):
+```bash
+bash ~/auv/scripts/saha_menu.sh                  # menü
+bash ~/auv/scripts/health_check.sh               # haberleşme + sensör
+bash ~/auv/scripts/health_check.sh --comms-only  # sadece haberleşme
+bash ~/auv/scripts/health_check.sh -i            # takılı sensörleri seç
+```
+Salt-okunur (motor/arm/MAVLink yazması YOK). Sensör durumları: `BAĞLI·VERİ AKIYOR` /
+`BAĞLANTI VAR AMA VERİ GELMİYOR` / `BAĞLANTI YOK`. Haberleşme: kart ping + FC MAVLink linki
+(`.20`) + köprüler (8000/8765/8080); sorun varsa nedeni yazılır.
+
 ## Deploy + Boot (tek yol)
 ```bash
 # DEPLOY (Jetson'da): repo tek doğruluk-kaynağı; ~/webpanel EMEKLİ (köprü ~/auv/jetson'dan koşar)
